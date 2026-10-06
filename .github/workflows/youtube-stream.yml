@@ -1,14 +1,11 @@
-name: YouTube Live Stream (Ultimate Friday Edition)
+name: YouTube Live Stream (Ultimate Edition)
 
 on:
   workflow_dispatch:
   schedule:
-    # الجمعة فقط: 5 صباحاً بتوقيت الأردن (2:00 UTC) - بداية بث الكهف
-    - cron: '0 2 * * 5'
-    # كل يوم: 11 صباحاً بتوقيت الأردن (8:00 UTC)
-    - cron: '0 8 * * *'
-    # كل يوم: 11 مساءً بتوقيت الأردن (20:00 UTC)
-    - cron: '0 20 * * *'
+    - cron: '0 2 * * 5'    # الجمعة 5 صباحاً بتوقيت الأردن
+    - cron: '0 8 * * *'    # يومياً 11 صباحاً
+    - cron: '0 20 * * *'   # يومياً 11 مساءً
 
 concurrency:
   group: youtube-live
@@ -23,10 +20,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install FFmpeg and Arabic Fonts
+      - name: Install Dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg fonts-noto-core
+          sudo apt-get install -y -qq ffmpeg fonts-noto-core jq
 
       - name: Detect Day and Pick Audio
         id: day
@@ -34,158 +31,184 @@ jobs:
           AUDIO_URL_BAQARAH: ${{ secrets.AUDIO_URL }}
           AUDIO_URL_KAHF: ${{ secrets.AUDIO_URL_KAHF }}
         run: |
-          DAY=$(TZ='Asia/Amman' date +%u)   # 5 = Friday
-          echo "اليوم (1=الإثنين..7=الأحد): $DAY"
+          DAY=$(TZ='Asia/Amman' date +%u)
           if [ "$DAY" = "5" ]; then
             echo "is_friday=true" >> $GITHUB_OUTPUT
-            echo "🕌 اليوم الجمعة - بث سورة الكهف"
-            if [ -z "$AUDIO_URL_KAHF" ]; then
-              echo "❌ خطأ: لم يتم تعيين AUDIO_URL_KAHF"
-              exit 1
-            fi
+            [ -z "$AUDIO_URL_KAHF" ] && { echo "❌ AUDIO_URL_KAHF missing"; exit 1; }
             echo "audio_url=$AUDIO_URL_KAHF" >> $GITHUB_OUTPUT
           else
             echo "is_friday=false" >> $GITHUB_OUTPUT
-            echo "📖 بث سورة البقرة"
             echo "audio_url=$AUDIO_URL_BAQARAH" >> $GITHUB_OUTPUT
           fi
 
-      - name: Download Audio File
+      - name: Download Audio and Get Duration
         run: |
           wget -q --show-progress -O audio.mp3 "${{ steps.day.outputs.audio_url }}"
           ls -lh audio.mp3
+          DUR=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 audio.mp3 | cut -d. -f1)
+          echo "AUDIO_DURATION=$DUR" >> $GITHUB_ENV
+          echo "⏱️ مدة الصوت: $DUR ثانية"
 
       - name: Normalize Images
         run: |
           mkdir -p normalized
-          for img in cover*.jpg; do
+          for img in cover*.jpg 20m.jpg; do
+            [ -f "$img" ] || continue
             ffmpeg -y -loglevel error -i "$img" \
               -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p" \
               -q:v 2 "normalized/$img"
           done
           ls -lh normalized/
 
-      - name: Fetch Prayer Times for Arab Capitals
-        id: prayer
+      - name: Fetch Prayer, Hijri, Weather
+        id: data
         run: |
-          echo "🕌 جلب مواقيت الصلاة..."
-          
-          # قائمة المدن: "City,Country,الاسم بالعربي"
-          declare -a CITIES=(
-            "Amman,Jordan,عمّان"
-            "Jerusalem,Palestine,القدس"
-            "Damascus,Syria,دمشق"
-            "Baghdad,Iraq,بغداد"
-            "Riyadh,Saudi Arabia,الرياض"
-            "Cairo,Egypt,القاهرة"
-            "Kuwait,Kuwait,الكويت"
-          )
-          
-          > all_prayers.txt
-          for entry in "${CITIES[@]}"; do
-            IFS=',' read -r city country name <<< "$entry"
-            CITY_ENC=$(echo "$city" | sed 's/ /%20/g')
-            COUNTRY_ENC=$(echo "$country" | sed 's/ /%20/g')
-            RESP=$(curl -s --max-time 8 "https://api.aladhan.com/v1/timingsByCity?city=$CITY_ENC&country=$COUNTRY_ENC&method=23" 2>/dev/null || echo "")
-            if echo "$RESP" | grep -q '"Fajr"'; then
-              FAJR=$(echo "$RESP" | grep -o '"Fajr":"[^"]*"' | head -1 | cut -d'"' -f4 | cut -d' ' -f1)
-              DHUHR=$(echo "$RESP" | grep -o '"Dhuhr":"[^"]*"' | head -1 | cut -d'"' -f4 | cut -d' ' -f1)
-              ASR=$(echo "$RESP" | grep -o '"Asr":"[^"]*"' | head -1 | cut -d'"' -f4 | cut -d' ' -f1)
-              MAGHRIB=$(echo "$RESP" | grep -o '"Maghrib":"[^"]*"' | head -1 | cut -d'"' -f4 | cut -d' ' -f1)
-              ISHA=$(echo "$RESP" | grep -o '"Isha":"[^"]*"' | head -1 | cut -d'"' -f4 | cut -d' ' -f1)
-              echo "$name|$FAJR|$DHUHR|$ASR|$MAGHRIB|$ISHA" >> all_prayers.txt
-            fi
-          done
-          
-          # السطر الأول: مواقيت عمّان الكاملة
-          AMMAN_LINE=$(grep '^عمّان' all_prayers.txt | head -1)
-          if [ -n "$AMMAN_LINE" ]; then
-            IFS='|' read -r _ F D A M I <<< "$AMMAN_LINE"
-            PRAYER_MAIN="عمّان — الفجر $F | الظهر $D | العصر $A | المغرب $M | العشاء $I"
-          else
-            PRAYER_MAIN="تعذّر جلب مواقيت عمّان"
-          fi
-          echo "prayer_main=$PRAYER_MAIN" >> $GITHUB_OUTPUT
-          
-          # السطر الثاني: الفجر لباقي المدن (مختصر)
+          RESP=$(curl -s --max-time 10 "https://api.aladhan.com/v1/timingsByCity?city=Amman&country=Jordan&method=23")
+          HIJRI=$(echo "$RESP" | jq -r '.data.date.hijri | "\(.day) \(.month.ar) \(.year) هـ"')
+          GREG=$(TZ='Asia/Amman' date '+%Y/%m/%d')
+          FAJR=$(echo "$RESP" | jq -r '.data.timings.Fajr' | cut -d' ' -f1)
+          DHUHR=$(echo "$RESP" | jq -r '.data.timings.Dhuhr' | cut -d' ' -f1)
+          ASR=$(echo "$RESP" | jq -r '.data.timings.Asr' | cut -d' ' -f1)
+          MAGHRIB=$(echo "$RESP" | jq -r '.data.timings.Maghrib' | cut -d' ' -f1)
+          ISHA=$(echo "$RESP" | jq -r '.data.timings.Isha' | cut -d' ' -f1)
+          echo "prayer_main=عمّان — الفجر $FAJR | الظهر $DHUHR | العصر $ASR | المغرب $MAGHRIB | العشاء $ISHA" >> $GITHUB_OUTPUT
+          echo "hijri=$HIJRI" >> $GITHUB_OUTPUT
+          echo "gregorian=$GREG" >> $GITHUB_OUTPUT
           SECONDARY=""
-          while IFS='|' read -r name F _ _ _ _; do
-            if [ "$name" != "عمّان" ]; then
-              SECONDARY="$SECONDARY$name $F | "
-            fi
-          done < all_prayers.txt
-          SECONDARY="${SECONDARY% | }"
-          if [ -z "$SECONDARY" ]; then
-            SECONDARY="القدس والمدن العربية"
-          fi
-          echo "prayer_secondary=$SECONDARY" >> $GITHUB_OUTPUT
-          
-          echo "✅ السطر 1: $PRAYER_MAIN"
-          echo "✅ السطر 2: $SECONDARY"
-          cat all_prayers.txt
+          for e in "Jerusalem,Palestine,القدس" "Damascus,Syria,دمشق" "Baghdad,Iraq,بغداد" "Riyadh,Saudi Arabia,الرياض" "Cairo,Egypt,القاهرة" "Kuwait,Kuwait,الكويت"; do
+            IFS=',' read -r city country name <<< "$e"
+            CE=$(echo "$city" | sed 's/ /%20/g')
+            CO=$(echo "$country" | sed 's/ /%20/g')
+            R=$(curl -s --max-time 5 "https://api.aladhan.com/v1/timingsByCity?city=$CE&country=$CO&method=23")
+            F=$(echo "$R" | jq -r '.data.timings.Fajr' | cut -d' ' -f1)
+            SECONDARY="$SECONDARY $name $F |"
+          done
+          echo "prayer_secondary=${SECONDARY# }" >> $GITHUB_OUTPUT
+          WEATHER=$(curl -s --max-time 5 "https://wttr.in/Amman?format=%t" | tr -d ' ' | head -c 10)
+          [ -z "$WEATHER" ] && WEATHER="--"
+          echo "weather=$WEATHER" >> $GITHUB_OUTPUT
+          START_EPOCH=$(date +%s)
+          NOTIF=""
+          for p in "الفجر:$FAJR" "الظهر:$DHUHR" "العصر:$ASR" "المغرب:$MAGHRIB" "العشاء:$ISHA"; do
+            ar="${p%%:*}"; t="${p##*:}"
+            PE=$(TZ='Asia/Amman' date -d "today $t" +%s)
+            OFF=$((PE - START_EPOCH))
+            [ $OFF -gt 0 ] && [ $OFF -lt 21000 ] && NOTIF="$NOTIF|$ar:$OFF"
+          done
+          echo "notifications=$NOTIF" >> $GITHUB_OUTPUT
+          echo "🔔 $NOTIF"
 
-      - name: Create Random Image Playlist
+      - name: Create Image Playlist
         env:
           IS_FRIDAY: ${{ steps.day.outputs.is_friday }}
         run: |
-          echo "🔀 إنشاء قائمة صور عشوائية..."
-          
+          > images.txt
           if [ "$IS_FRIDAY" = "true" ]; then
-            echo "🕌 الجمعة: استبعاد cover.jpg و cover1.jpg"
-            # على الجمعة: لا صورة افتتاحية، فقط صور 2-9 عشوائية
-            > images.txt
-            for img in $(ls normalized/cover[2-9].jpg | shuf); do
-              echo "file '$img'" >> images.txt
-              echo "duration 60" >> images.txt
+            [ -f "normalized/20m.jpg" ] && echo "file 'normalized/20m.jpg'" >> images.txt && echo "duration 1200" >> images.txt
+            for img in $(ls normalized/cover[2-9].jpg 2>/dev/null | shuf); do
+              echo "file '$img'" >> images.txt; echo "duration 60" >> images.txt
             done
-            FIRST=$(ls normalized/cover[2-9].jpg | shuf | head -1)
-            echo "file '$FIRST'" >> images.txt
+            F=$(ls normalized/cover[2-9].jpg 2>/dev/null | shuf | head -1)
+            [ -n "$F" ] && echo "file '$F'" >> images.txt
           else
-            echo "📖 يوم عادي: cover.jpg افتتاحية 20 دقيقة + 9 صور عشوائية"
-            cat > images.txt << 'EOF'
-          file 'normalized/cover.jpg'
-          duration 1200
-          EOF
-            for img in $(ls normalized/cover[1-9].jpg | shuf); do
-              echo "file '$img'" >> images.txt
-              echo "duration 60" >> images.txt
+            echo "file 'normalized/cover.jpg'" >> images.txt
+            echo "duration 1200" >> images.txt
+            for img in $(ls normalized/cover[1-9].jpg 2>/dev/null | shuf); do
+              echo "file '$img'" >> images.txt; echo "duration 60" >> images.txt
             done
-            FIRST=$(ls normalized/cover[1-9].jpg | shuf | head -1)
-            echo "file '$FIRST'" >> images.txt
+            F=$(ls normalized/cover[1-9].jpg 2>/dev/null | shuf | head -1)
+            [ -n "$F" ] && echo "file '$F'" >> images.txt
           fi
-          
-          cat images.txt
+
+      - name: Prepare Verses Pool
+        run: |
+          cat > verses_pool.txt << 'EOF'
+          بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
+          الم ۚ ذَٰلِكَ الْكِتَابُ لَا رَيْبَ ۛ فِيهِ ۛ هُدًى لِّلْمُتَّقِينَ
+          الَّذِينَ يُؤْمِنُونَ بِالْغَيْبِ وَيُقِيمُونَ الصَّلَاةَ
+          وَمِمَّا رَزَقْنَاهُمْ يُنفِقُونَ
+          أُولَٰئِكَ عَلَىٰ هُدًى مِّن رَّبِّهِمْ وَأُولَٰئِكَ هُمُ الْمُفْلِحُونَ
+          اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ
+          لَا تَأْخُذُهُ سِنَةٌ وَلَا نَوْمٌ
+          لَّهُ مَا فِي السَّمَاوَاتِ وَمَا فِي الْأَرْضِ
+          مَن ذَا الَّذِي يَشْفَعُ عِندَهُ إِلَّا بِإِذْنِهِ
+          وَسِعَ كُرْسِيُّهُ السَّمَاوَاتِ وَالْأَرْضَ
+          وَلَا يَئُودُهُ حِفْظُهُمَا ۚ وَهُوَ الْعَلِيُّ الْعَظِيمُ
+          لَا إِكْرَاهَ فِي الدِّينِ ۖ قَد تَّبَيَّنَ الرُّشْدُ مِنَ الْغَيِّ
+          إِنَّ اللَّهَ مَعَ الصَّابِرِينَ
+          وَبَشِّرِ الصَّابِرِينَ
+          إِنَّا لِلَّهِ وَإِنَّا إِلَيْهِ رَاجِعُونَ
+          رَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً وَفِي الْآخِرَةِ حَسَنَةً
+          سُبْحَانَ اللَّهِ وَبِحَمْدِهِ
+          EOF
 
       - name: Stream to YouTube
         env:
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
           TZ: 'Asia/Amman'
-          PRAYER_MAIN: ${{ steps.prayer.outputs.prayer_main }}
-          PRAYER_SECONDARY: ${{ steps.prayer.outputs.prayer_secondary }}
+          PRAYER_MAIN: ${{ steps.data.outputs.prayer_main }}
+          PRAYER_SECONDARY: ${{ steps.data.outputs.prayer_secondary }}
+          HIJRI: ${{ steps.data.outputs.hijri }}
+          GREGORIAN: ${{ steps.data.outputs.gregorian }}
+          WEATHER: ${{ steps.data.outputs.weather }}
+          NOTIFICATIONS: ${{ steps.data.outputs.notifications }}
         run: |
-          if [ -z "$YOUTUBE_STREAM_KEY" ]; then
-            echo "❌ خطأ: لم يتم تعيين مفتاح البث"
-            exit 1
-          fi
-
+          [ -z "$YOUTUBE_STREAM_KEY" ] && { echo "❌ Stream key missing"; exit 1; }
           RTMP_URL="rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
-
           FONT="/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
           [ ! -f "$FONT" ] && FONT="/usr/share/fonts/opentype/noto/NotoNaskhArabic-Regular.ttf"
           [ ! -f "$FONT" ] && FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-          echo "🔤 الخط: $FONT"
 
-          echo "🎥 بدء البث..."
+          shuf -n 1 verses_pool.txt > /tmp/verse.txt
+          echo "تقدم السورة: 0%" > /tmp/progress.txt
 
-          # Ken Burns خفيف جداً: zoom من 1.0 إلى 1.04 ببطء شديد
-          # fps=30 يحول الصور إلى إطارات، ثم zoompan يحركها بلطف
-          # drawtext يعرض الساعة + سطري المواقيت
+          # Background: verse rotator every 5 min
+          (while true; do
+            sleep 300
+            shuf -n 1 verses_pool.txt > /tmp/v.tmp && mv /tmp/v.tmp /tmp/verse.txt
+          done) & V_PID=$!
+
+          # Background: progress updater every 30 sec
+          (S=0; while true; do
+            sleep 30; S=$((S+30))
+            [ "$AUDIO_DURATION" -gt 0 ] 2>/dev/null && P=$((S % AUDIO_DURATION * 100 / AUDIO_DURATION)) || P=0
+            echo "تقدم السورة: ${P}%" > /tmp/p.tmp && mv /tmp/p.tmp /tmp/progress.txt
+          done) & P_PID=$!
+
+          trap "kill $V_PID $P_PID 2>/dev/null || true" EXIT INT TERM
+
+          # Build filter chain
+          VF="scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"
+          VF="$VF,zoompan=z='min(zoom+0.00002,1.04)':d=1:s=1920x1080:fps=30"
+          VF="$VF,eq=brightness='0.015*sin(n/400)':eval=frame"
+          VF="$VF,drawtext=fontfile=$FONT:text='%{localtime\:%H.%M}':fontsize=52:fontcolor=white:x=w-tw-40:y=40:box=1:boxcolor=black@0.55:boxborderw=14"
+          VF="$VF,drawtext=fontfile=$FONT:text='$PRAYER_MAIN':fontsize=22:fontcolor=gold:x=40:y=40:box=1:boxcolor=black@0.55:boxborderw=10"
+          [ -n "$PRAYER_SECONDARY" ] && VF="$VF,drawtext=fontfile=$FONT:text='$PRAYER_SECONDARY':fontsize=19:fontcolor=white:x=40:y=95:box=1:boxcolor=black@0.55:boxborderw=10"
+          VF="$VF,drawtext=fontfile=$FONT:text='$HIJRI  •  $GREGORIAN  •  عمّان $WEATHER':fontsize=19:fontcolor=white:x=40:y=145:box=1:boxcolor=black@0.55:boxborderw=10"
+          VF="$VF,drawtext=fontfile=$FONT:text='قناة عمر العقرباوي':fontsize=24:fontcolor=white@0.85:x=w-tw-40:y=h-th-40:box=1:boxcolor=black@0.5:boxborderw=10"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/progress.txt:reload=1:fontsize=22:fontcolor=white:x=40:y=h-th-40:box=1:boxcolor=black@0.55:boxborderw=10"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/verse.txt:reload=1:fontsize=26:fontcolor=white:x=(w-tw)/2:y=h-th-100:box=1:boxcolor=black@0.65:boxborderw=14"
+          VF="$VF,drawtext=fontfile=$FONT:text='أهلاً بكم في قناة عمر العقرباوي':fontsize=54:fontcolor=gold:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.7:boxborderw=20:enable='lt(t\,30)'"
+
+          if [ -n "$NOTIFICATIONS" ]; then
+            IFS='|' read -ra NOTIFS <<< "$NOTIFICATIONS"
+            for n in "${NOTIFS[@]}"; do
+              [ -z "$n" ] && continue
+              NAME="${n%%:*}"; OFF="${n##*:}"; END=$((OFF + 60))
+              VF="$VF,drawtext=fontfile=$FONT:text='حان الآن وقت صلاة $NAME':fontsize=46:fontcolor=gold:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.75:boxborderw=20:enable='between(t\,$OFF\,$END)'"
+            done
+          fi
+          VF="$VF,format=yuv420p"
+
+          echo "🎥 Starting stream..."
+
           timeout 21300 ffmpeg \
             -re -stream_loop -1 -f concat -safe 0 -i images.txt \
             -re -stream_loop -1 -i audio.mp3 \
-            -filter_complex "[0:v]fps=30,scale=2112:1188,zoompan=z='min(zoom+0.00002,1.04)':d=1:s=1920x1080:fps=30,drawtext=fontfile=$FONT:text='%{localtime\\:%H.%M}':fontsize=54:fontcolor=white:x=w-tw-40:y=40:box=1:boxcolor=black@0.55:boxborderw=14,drawtext=fontfile=$FONT:text='$PRAYER_MAIN':fontsize=22:fontcolor=gold:x=40:y=40:box=1:boxcolor=black@0.55:boxborderw=10,drawtext=fontfile=$FONT:text='$PRAYER_SECONDARY':fontsize=20:fontcolor=white:x=40:y=90:box=1:boxcolor=black@0.55:boxborderw=10,format=yuv420p[v]" \
-            -map "[v]" -map 1:a \
+            -vf "$VF" \
             -c:v libx264 -preset veryfast -tune stillimage \
             -b:v 1500k -maxrate 1500k -bufsize 3000k -g 50 \
             -c:a aac -b:a 192k -ar 44100 \
-            -f flv "$RTMP_URL" || echo "⏹️ تم إيقاف البث"
+            -f flv "$RTMP_URL" || echo "⏹️ Stream stopped"
+
+          kill $V_PID $P_PID 2>/dev/null || true
