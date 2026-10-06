@@ -1,17 +1,15 @@
-name: YouTube Live Stream (Auto 12 Hours Daily)
+name: YouTube Live Stream (Ultimate Friday Edition)
 
 on:
-  # 1. التشغيل اليدوي (إذا أردت تشغيله بنفسك في أي وقت)
   workflow_dispatch:
-  
-  # 2. التشغيل التلقائي (مرتين يومياً لمدة 6 ساعات لكل بث)
   schedule:
-    # البث الأول: 8:00 صباحاً UTC (11:00 صباحاً بتوقيت الأردن)
+    # الجمعة فقط: 5 صباحاً بتوقيت الأردن (2:00 UTC) - بداية بث الكهف
+    - cron: '0 2 * * 5'
+    # كل يوم: 11 صباحاً بتوقيت الأردن (8:00 UTC)
     - cron: '0 8 * * *'
-    # البث الثاني: 8:00 مساءً UTC (11:00 مساءً بتوقيت الأردن)
+    # كل يوم: 11 مساءً بتوقيت الأردن (20:00 UTC)
     - cron: '0 20 * * *'
 
-# منع تشغيل أكثر من بث في نفس الوقت لتجنب تعارض مفاتيح البث
 concurrency:
   group: youtube-live
   cancel-in-progress: false
@@ -19,37 +17,151 @@ concurrency:
 jobs:
   stream:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # حد أقصى 6 ساعات (سيتم إيقافه تلقائياً بأمان قبلها)
+    timeout-minutes: 360
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install FFmpeg
+      - name: Install FFmpeg and Arabic Fonts
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg
+          sudo apt-get install -y -qq ffmpeg fonts-noto-core
+
+      - name: Detect Day and Pick Audio
+        id: day
+        env:
+          AUDIO_URL_BAQARAH: ${{ secrets.AUDIO_URL }}
+          AUDIO_URL_KAHF: ${{ secrets.AUDIO_URL_KAHF }}
+        run: |
+          DAY=$(TZ='Asia/Amman' date +%u)   # 5 = Friday
+          echo "اليوم (1=الإثنين..7=الأحد): $DAY"
+          if [ "$DAY" = "5" ]; then
+            echo "is_friday=true" >> $GITHUB_OUTPUT
+            echo "🕌 اليوم الجمعة - بث سورة الكهف"
+            if [ -z "$AUDIO_URL_KAHF" ]; then
+              echo "❌ خطأ: لم يتم تعيين AUDIO_URL_KAHF"
+              exit 1
+            fi
+            echo "audio_url=$AUDIO_URL_KAHF" >> $GITHUB_OUTPUT
+          else
+            echo "is_friday=false" >> $GITHUB_OUTPUT
+            echo "📖 بث سورة البقرة"
+            echo "audio_url=$AUDIO_URL_BAQARAH" >> $GITHUB_OUTPUT
+          fi
 
       - name: Download Audio File
-        env:
-          AUDIO_URL: ${{ secrets.AUDIO_URL }}
         run: |
-          if [ -z "$AUDIO_URL" ]; then
-            echo "❌ خطأ: لم يتم تعيين رابط الصوت (AUDIO_URL) في Secrets"
-            exit 1
-          fi
-          echo "⬇️ جاري تحميل الملف الصوتي من الرابط الخارجي..."
-          wget -q --show-progress -O audio.mp3 "$AUDIO_URL"
+          wget -q --show-progress -O audio.mp3 "${{ steps.day.outputs.audio_url }}"
           ls -lh audio.mp3
 
-      - name: Verify files exist
+      - name: Normalize Images
         run: |
-          echo "🔍 التحقق من وجود الملفات..."
-          ls -lh cover.jpg audio.mp3 || (echo "❌ خطأ: تأكد من وجود cover.jpg" && exit 1)
+          mkdir -p normalized
+          for img in cover*.jpg; do
+            ffmpeg -y -loglevel error -i "$img" \
+              -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p" \
+              -q:v 2 "normalized/$img"
+          done
+          ls -lh normalized/
+
+      - name: Fetch Prayer Times for Arab Capitals
+        id: prayer
+        run: |
+          echo "🕌 جلب مواقيت الصلاة..."
+          
+          # قائمة المدن: "City,Country,الاسم بالعربي"
+          declare -a CITIES=(
+            "Amman,Jordan,عمّان"
+            "Jerusalem,Palestine,القدس"
+            "Damascus,Syria,دمشق"
+            "Baghdad,Iraq,بغداد"
+            "Riyadh,Saudi Arabia,الرياض"
+            "Cairo,Egypt,القاهرة"
+            "Kuwait,Kuwait,الكويت"
+          )
+          
+          > all_prayers.txt
+          for entry in "${CITIES[@]}"; do
+            IFS=',' read -r city country name <<< "$entry"
+            CITY_ENC=$(echo "$city" | sed 's/ /%20/g')
+            COUNTRY_ENC=$(echo "$country" | sed 's/ /%20/g')
+            RESP=$(curl -s --max-time 8 "https://api.aladhan.com/v1/timingsByCity?city=$CITY_ENC&country=$COUNTRY_ENC&method=23" 2>/dev/null || echo "")
+            if echo "$RESP" | grep -q '"Fajr"'; then
+              FAJR=$(echo "$RESP" | grep -o '"Fajr":"[^"]*"' | head -1 | cut -d'"' -f4 | cut -d' ' -f1)
+              DHUHR=$(echo "$RESP" | grep -o '"Dhuhr":"[^"]*"' | head -1 | cut -d'"' -f4 | cut -d' ' -f1)
+              ASR=$(echo "$RESP" | grep -o '"Asr":"[^"]*"' | head -1 | cut -d'"' -f4 | cut -d' ' -f1)
+              MAGHRIB=$(echo "$RESP" | grep -o '"Maghrib":"[^"]*"' | head -1 | cut -d'"' -f4 | cut -d' ' -f1)
+              ISHA=$(echo "$RESP" | grep -o '"Isha":"[^"]*"' | head -1 | cut -d'"' -f4 | cut -d' ' -f1)
+              echo "$name|$FAJR|$DHUHR|$ASR|$MAGHRIB|$ISHA" >> all_prayers.txt
+            fi
+          done
+          
+          # السطر الأول: مواقيت عمّان الكاملة
+          AMMAN_LINE=$(grep '^عمّان' all_prayers.txt | head -1)
+          if [ -n "$AMMAN_LINE" ]; then
+            IFS='|' read -r _ F D A M I <<< "$AMMAN_LINE"
+            PRAYER_MAIN="عمّان — الفجر $F | الظهر $D | العصر $A | المغرب $M | العشاء $I"
+          else
+            PRAYER_MAIN="تعذّر جلب مواقيت عمّان"
+          fi
+          echo "prayer_main=$PRAYER_MAIN" >> $GITHUB_OUTPUT
+          
+          # السطر الثاني: الفجر لباقي المدن (مختصر)
+          SECONDARY=""
+          while IFS='|' read -r name F _ _ _ _; do
+            if [ "$name" != "عمّان" ]; then
+              SECONDARY="$SECONDARY$name $F | "
+            fi
+          done < all_prayers.txt
+          SECONDARY="${SECONDARY% | }"
+          if [ -z "$SECONDARY" ]; then
+            SECONDARY="القدس والمدن العربية"
+          fi
+          echo "prayer_secondary=$SECONDARY" >> $GITHUB_OUTPUT
+          
+          echo "✅ السطر 1: $PRAYER_MAIN"
+          echo "✅ السطر 2: $SECONDARY"
+          cat all_prayers.txt
+
+      - name: Create Random Image Playlist
+        env:
+          IS_FRIDAY: ${{ steps.day.outputs.is_friday }}
+        run: |
+          echo "🔀 إنشاء قائمة صور عشوائية..."
+          
+          if [ "$IS_FRIDAY" = "true" ]; then
+            echo "🕌 الجمعة: استبعاد cover.jpg و cover1.jpg"
+            # على الجمعة: لا صورة افتتاحية، فقط صور 2-9 عشوائية
+            > images.txt
+            for img in $(ls normalized/cover[2-9].jpg | shuf); do
+              echo "file '$img'" >> images.txt
+              echo "duration 60" >> images.txt
+            done
+            FIRST=$(ls normalized/cover[2-9].jpg | shuf | head -1)
+            echo "file '$FIRST'" >> images.txt
+          else
+            echo "📖 يوم عادي: cover.jpg افتتاحية 20 دقيقة + 9 صور عشوائية"
+            cat > images.txt << 'EOF'
+          file 'normalized/cover.jpg'
+          duration 1200
+          EOF
+            for img in $(ls normalized/cover[1-9].jpg | shuf); do
+              echo "file '$img'" >> images.txt
+              echo "duration 60" >> images.txt
+            done
+            FIRST=$(ls normalized/cover[1-9].jpg | shuf | head -1)
+            echo "file '$FIRST'" >> images.txt
+          fi
+          
+          cat images.txt
 
       - name: Stream to YouTube
         env:
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
+          TZ: 'Asia/Amman'
+          PRAYER_MAIN: ${{ steps.prayer.outputs.prayer_main }}
+          PRAYER_SECONDARY: ${{ steps.prayer.outputs.prayer_secondary }}
         run: |
           if [ -z "$YOUTUBE_STREAM_KEY" ]; then
             echo "❌ خطأ: لم يتم تعيين مفتاح البث"
@@ -57,14 +169,23 @@ jobs:
           fi
 
           RTMP_URL="rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
-          echo "🎥 بدء دمج الصورة مع الصوت وبثهما بشكل مستمر بسرعة الوقت الحقيقي..."
 
-          # -re : إجبار FFmpeg على العمل بسرعة الوقت الحقيقي (Real-time)
-          # timeout 21300 : إيقاف البث بأمان بعد 5 ساعات و55 دقيقة
-          timeout 21300 ffmpeg -re -loop 1 -i cover.jpg -re -stream_loop -1 -i audio.mp3 \
+          FONT="/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
+          [ ! -f "$FONT" ] && FONT="/usr/share/fonts/opentype/noto/NotoNaskhArabic-Regular.ttf"
+          [ ! -f "$FONT" ] && FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+          echo "🔤 الخط: $FONT"
+
+          echo "🎥 بدء البث..."
+
+          # Ken Burns خفيف جداً: zoom من 1.0 إلى 1.04 ببطء شديد
+          # fps=30 يحول الصور إلى إطارات، ثم zoompan يحركها بلطف
+          # drawtext يعرض الساعة + سطري المواقيت
+          timeout 21300 ffmpeg \
+            -re -stream_loop -1 -f concat -safe 0 -i images.txt \
+            -re -stream_loop -1 -i audio.mp3 \
+            -filter_complex "[0:v]fps=30,scale=2112:1188,zoompan=z='min(zoom+0.00002,1.04)':d=1:s=1920x1080:fps=30,drawtext=fontfile=$FONT:text='%{localtime\\:%H.%M}':fontsize=54:fontcolor=white:x=w-tw-40:y=40:box=1:boxcolor=black@0.55:boxborderw=14,drawtext=fontfile=$FONT:text='$PRAYER_MAIN':fontsize=22:fontcolor=gold:x=40:y=40:box=1:boxcolor=black@0.55:boxborderw=10,drawtext=fontfile=$FONT:text='$PRAYER_SECONDARY':fontsize=20:fontcolor=white:x=40:y=90:box=1:boxcolor=black@0.55:boxborderw=10,format=yuv420p[v]" \
+            -map "[v]" -map 1:a \
             -c:v libx264 -preset veryfast -tune stillimage \
-            -b:v 1500k -maxrate 1500k -bufsize 3000k \
-            -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p" \
-            -g 50 \
+            -b:v 1500k -maxrate 1500k -bufsize 3000k -g 50 \
             -c:a aac -b:a 192k -ar 44100 \
             -f flv "$RTMP_URL" || echo "⏹️ تم إيقاف البث"
