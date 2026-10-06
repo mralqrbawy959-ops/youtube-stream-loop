@@ -2,15 +2,6 @@ name: YouTube Live Stream (Ultimate Edition)
 
 on:
   workflow_dispatch:
-    inputs:
-      test_mode:
-        description: 'وضع الاختبار (1 دقيقة فقط)'
-        required: false
-        default: 'no'
-        type: choice
-        options:
-          - 'no'
-          - 'yes'
   schedule:
     - cron: '0 2 * * 5'    # الجمعة 5 صباحاً (بتوقيت الأردن)
     - cron: '0 8 * * *'    # يومياً 11 صباحاً
@@ -89,7 +80,6 @@ jobs:
       - name: Fetch Prayer, Hijri, Weather
         id: data
         run: |
-          # ---- مواقيت عمّان ----
           RESP=$(curl -s --max-time 20 "https://api.aladhan.com/v1/timingsByCity?city=Amman&country=Jordan&method=23" || echo "")
           if echo "$RESP" | grep -q '"Fajr"'; then
             FAJR=$(echo "$RESP" | jq -r '.data.timings.Fajr' | cut -d' ' -f1 | tr ':' '.')
@@ -110,7 +100,6 @@ jobs:
           echo "hijri=$HIJRI" >> $GITHUB_OUTPUT
           echo "gregorian=$(TZ='Asia/Amman' date '+%Y/%m/%d')" >> $GITHUB_OUTPUT
 
-          # ---- مدن أخرى ----
           SECONDARY=""
           for e in "Jerusalem,Palestine,القدس" "Damascus,Syria,دمشق" "Baghdad,Iraq,بغداد" "Riyadh,Saudi Arabia,الرياض" "Cairo,Egypt,القاهرة" "Kuwait,Kuwait,الكويت"; do
             IFS=',' read -r city country name <<< "$e"
@@ -125,12 +114,10 @@ jobs:
           done
           echo "prayer_secondary=${SECONDARY# }" >> $GITHUB_OUTPUT
 
-          # ---- الطقس ----
           WEATHER=$(curl -s --max-time 10 "https://wttr.in/Amman?format=%t" 2>/dev/null | tr -d ' ' | head -c 10)
           [ -z "$WEATHER" ] && WEATHER="--"
           echo "weather=$WEATHER" >> $GITHUB_OUTPUT
 
-          # ---- الصلاة القادمة ----
           FAJR_C=$(echo "$FAJR" | tr '.' ':')
           DHUHR_C=$(echo "$DHUHR" | tr '.' ':')
           ASR_C=$(echo "$ASR" | tr '.' ':')
@@ -148,7 +135,6 @@ jobs:
           echo "next_prayer=$NEXT_PRAYER" >> $GITHUB_OUTPUT
           echo "next_offset=$NEXT_OFF" >> $GITHUB_OUTPUT
 
-          # ---- إشعارات دخول وقت الصلاة ----
           START_EPOCH=$(date +%s)
           NOTIF=""
           for p in "الفجر:$FAJR_C" "الظهر:$DHUHR_C" "العصر:$ASR_C" "المغرب:$MAGHRIB_C" "العشاء:$ISHA_C"; do
@@ -237,7 +223,6 @@ jobs:
           AR_DAY: ${{ steps.day.outputs.arabic_day }}
           SURAH: ${{ steps.day.outputs.surah_name }}
           IS_FRIDAY: ${{ steps.day.outputs.is_friday }}
-          TEST_MODE: ${{ github.event.inputs.test_mode }}
         run: |
           if [ -z "$YOUTUBE_STREAM_KEY" ]; then
             echo "❌ مفتاح البث غير معرّف"
@@ -250,7 +235,6 @@ jobs:
           [ ! -f "$FONT" ] && FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
           echo "🔤 الخط: $FONT"
 
-          # ====== إنشاء كل الملفات الديناميكية قبل FFmpeg ======
           shuf -n 1 verses_pool.txt > /tmp/verse.txt
           shuf -n 1 dhikr_pool.txt > /tmp/dhikr.txt
           shuf -n 1 hadith_pool.txt > /tmp/hadith.txt
@@ -263,7 +247,6 @@ jobs:
           echo "📁 الملفات المُنشأة:"
           ls -lh /tmp/*.txt
 
-          # ====== العمليات الخلفية ======
           (while true; do sleep 60; date '+%H.%M' > /tmp/c.tmp && mv /tmp/c.tmp /tmp/clock.txt; done) & C_PID=$!
           (while true; do sleep 300; shuf -n 1 verses_pool.txt > /tmp/v.tmp && mv /tmp/v.tmp /tmp/verse.txt; done) & V_PID=$!
           (while true; do sleep 180; shuf -n 1 dhikr_pool.txt > /tmp/d.tmp && mv /tmp/d.tmp /tmp/dhikr.txt; done) & D_PID=$!
@@ -302,7 +285,6 @@ jobs:
 
           trap "kill $C_PID $V_PID $D_PID $H_PID $U_PID 2>/dev/null || true" EXIT INT TERM
 
-          # ====== سلسلة الفلاتر ======
           VF="scale=1920:1080:force_original_aspect_ratio=decrease"
           VF="$VF,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"
           VF="$VF,setsar=1"
@@ -346,23 +328,13 @@ jobs:
 
           VF="$VF,format=yuv420p"
 
-          # ====== تحديد مدة البث ======
-          if [ "$TEST_MODE" = "yes" ]; then
-            STREAM_TIMEOUT=60
-            echo "🧪 وضع الاختبار: بث لدقيقة واحدة فقط"
-          else
-            STREAM_TIMEOUT=21300
-            echo "🎬 وضع البث الكامل: 5 ساعات و55 دقيقة"
-          fi
-
-          echo "🎥 بدء البث..."
+          echo "🎥 بدء البث الكامل: 5 ساعات و55 دقيقة..."
           echo "📋 عدد الفلاتر النشطة: $(echo "$VF" | grep -o 'drawtext' | wc -l)"
 
-          timeout $STREAM_TIMEOUT ffmpeg \
+          timeout 21300 ffmpeg \
             -re -stream_loop -1 -f concat -safe 0 -i images.txt \
             -re -stream_loop -1 -i audio.mp3 \
-            -filter_complex "[0:v]$VF[v0];[1:a]showwaves=s=300x80:mode=cline:colors=gold|white:rate=10[wv];[v0][wv]overlay=w-340:h-th-450[vout]" \
-            -map "[vout]" -map 1:a \
+            -vf "$VF" \
             -c:v libx264 -preset veryfast -tune stillimage \
             -b:v 1500k -maxrate 1500k -bufsize 3000k -g 50 \
             -c:a aac -b:a 192k -ar 44100 \
