@@ -1,4 +1,4 @@
-name: YouTube Live Stream (Stable Edition)
+name: YouTube Live Stream (Lite Edition)
 
 on:
   workflow_dispatch:
@@ -32,17 +32,6 @@ jobs:
           AUDIO_URL_KAHF: ${{ secrets.AUDIO_URL_KAHF }}
         run: |
           DAY_NUM=$(TZ='Asia/Amman' date +%u)
-          DAY_NAME=$(TZ='Asia/Amman' date +%A)
-          case "$DAY_NAME" in
-            Monday) AR_DAY="Al-Ithnayn" ;;
-            Tuesday) AR_DAY="Al-Thulatha" ;;
-            Wednesday) AR_DAY="Al-Arba'a" ;;
-            Thursday) AR_DAY="Al-Khamis" ;;
-            Friday) AR_DAY="Al-Jumua" ;;
-            Saturday) AR_DAY="Al-Sabt" ;;
-            Sunday) AR_DAY="Al-Ahad" ;;
-            *) AR_DAY="Today" ;;
-          esac
           if [ "$DAY_NUM" = "5" ]; then
             echo "is_friday=true" >> $GITHUB_OUTPUT
             echo "surah_name=Surah Al-Kahf" >> $GITHUB_OUTPUT
@@ -52,14 +41,11 @@ jobs:
             echo "surah_name=Surah Al-Baqarah" >> $GITHUB_OUTPUT
             echo "audio_url=$AUDIO_URL_BAQARAH" >> $GITHUB_OUTPUT
           fi
-          echo "arabic_day=$AR_DAY" >> $GITHUB_OUTPUT
 
-      - name: Download Audio and Get Duration
+      - name: Download Audio
         run: |
           wget -q --show-progress -O audio.mp3 "${{ steps.day.outputs.audio_url }}"
-          DUR=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 audio.mp3 | cut -d. -f1)
-          echo "AUDIO_DURATION=$DUR" >> $GITHUB_ENV
-          echo "Audio duration: $DUR seconds"
+          ls -lh audio.mp3
 
       - name: Normalize Images
         run: |
@@ -71,7 +57,7 @@ jobs:
               -q:v 2 "normalized/$img"
           done
 
-      - name: Fetch Prayer Hijri Weather
+      - name: Fetch Prayer Times
         id: data
         run: |
           RESP=$(curl -s --max-time 20 "https://api.aladhan.com/v1/timingsByCity?city=Amman&country=Jordan&method=23" || echo "")
@@ -81,46 +67,11 @@ jobs:
             ASR=$(echo "$RESP" | jq -r '.data.timings.Asr' | cut -d' ' -f1 | tr ':' '.')
             MAGHRIB=$(echo "$RESP" | jq -r '.data.timings.Maghrib' | cut -d' ' -f1 | tr ':' '.')
             ISHA=$(echo "$RESP" | jq -r '.data.timings.Isha' | cut -d' ' -f1 | tr ':' '.')
-            HIJRI=$(echo "$RESP" | jq -r '.data.date.hijri | "\(.day) \(.month.ar) \(.year)"' 2>/dev/null)
-            [ "$HIJRI" = "null" ] || [ -z "$HIJRI" ] && HIJRI="--"
           else
             FAJR="05.15"; DHUHR="12.30"; ASR="15.45"; MAGHRIB="18.30"; ISHA="19.55"
-            HIJRI="--"
           fi
-          echo "prayer_main=Amman | Fajr $FAJR | Dhuhr $DHUHR | Asr $ASR | Maghrib $MAGHRIB | Isha $ISHA" >> $GITHUB_OUTPUT
-          echo "hijri=$HIJRI" >> $GITHUB_OUTPUT
+          echo "prayer_main=Amman  Fajr $FAJR  Dhuhr $DHUHR  Asr $ASR  Maghrib $MAGHRIB  Isha $ISHA" >> $GITHUB_OUTPUT
           echo "gregorian=$(TZ='Asia/Amman' date '+%Y/%m/%d')" >> $GITHUB_OUTPUT
-
-          SECONDARY=""
-          for e in "Jerusalem,Palestine,Al-Quds" "Damascus,Syria,Damascus" "Baghdad,Iraq,Baghdad" "Riyadh,Saudi Arabia,Riyadh" "Cairo,Egypt,Cairo" "Kuwait,Kuwait,Kuwait"; do
-            IFS=',' read -r city country name <<< "$e"
-            CE=$(echo "$city" | sed 's/ /%20/g')
-            CO=$(echo "$country" | sed 's/ /%20/g')
-            R=$(curl -s --max-time 15 "https://api.aladhan.com/v1/timingsByCity?city=$CE&country=$CO&method=23" 2>/dev/null || echo "")
-            F=$(echo "$R" | jq -r '.data.timings.Fajr // "--"' 2>/dev/null | cut -d' ' -f1 | tr ':' '.')
-            [ -z "$F" ] && F="--"
-            [ "$F" = "null" ] && F="--"
-            SECONDARY="$SECONDARY $name $F |"
-            sleep 1
-          done
-          echo "prayer_secondary=${SECONDARY# }" >> $GITHUB_OUTPUT
-
-          WEATHER=$(curl -s --max-time 10 "https://wttr.in/Amman?format=%t" 2>/dev/null | tr -d ' ' | head -c 10)
-          [ -z "$WEATHER" ] && WEATHER="--"
-          echo "weather=$WEATHER" >> $GITHUB_OUTPUT
-
-          FAJR_C=$(echo "$FAJR" | tr '.' ':')
-          NOW=$(TZ='Asia/Amman' date +%s)
-          NEXT_PRAYER=""; NEXT_OFF=999999
-          for p in "Fajr:$FAJR_C" "Dhuhr:$DHUHR" "Asr:$ASR" "Maghrib:$MAGHRIB" "Isha:$ISHA"; do
-            ar="${p%%:*}"; t="${p##*:}"
-            PE=$(TZ='Asia/Amman' date -d "today $t" +%s 2>/dev/null || echo "$NOW")
-            [ $PE -lt $NOW ] && PE=$((PE + 86400))
-            OFF=$((PE - NOW))
-            if [ $OFF -lt $NEXT_OFF ]; then NEXT_OFF=$OFF; NEXT_PRAYER="$ar"; fi
-          done
-          echo "next_prayer=$NEXT_PRAYER" >> $GITHUB_OUTPUT
-          echo "next_offset=$NEXT_OFF" >> $GITHUB_OUTPUT
 
       - name: Create Image Playlist
         env:
@@ -136,8 +87,6 @@ jobs:
               echo "file '$img'" >> images.txt
               echo "duration 60" >> images.txt
             done
-            F=$(ls normalized/cover[2-9].jpg 2>/dev/null | shuf | head -1)
-            [ -n "$F" ] && echo "file '$F'" >> images.txt
           else
             echo "file 'normalized/cover.jpg'" >> images.txt
             echo "duration 1200" >> images.txt
@@ -145,56 +94,14 @@ jobs:
               echo "file '$img'" >> images.txt
               echo "duration 60" >> images.txt
             done
-            F=$(ls normalized/cover[1-9].jpg 2>/dev/null | shuf | head -1)
-            [ -n "$F" ] && echo "file '$F'" >> images.txt
           fi
-
-      - name: Prepare Content Pools
-        run: |
-          cat > verses_pool.txt << 'EOF'
-          Bismillah Al-Rahman Al-Rahim
-          Alif Lam Meem
-          Dhalika Al-Kitabu la rayba fih
-          Hudan lil-muttaqin
-          Allatheena yuminoona bil-ghayb
-          Wa yuqeemoona Al-Salah
-          Inna Allaha ma'a Al-Sabireen
-          Wa bashshir Al-Sabireen
-          Allahu la ilaha illa huwa Al-Hayy Al-Qayyum
-          Wasia kursiyyuhu Al-Samawati wal-Ard
-          EOF
-
-          cat > dhikr_pool.txt << 'EOF'
-          Subhan Allah wa bihamdih
-          La ilaha illa Allah wahdahu la sharika lah
-          Alhamdulillah Rabbi Al-Alameen
-          Allahu Akbar Kabeera
-          La hawla wa la quwwata illa billah
-          Astaghfir Allah Al-Azeem
-          Allahumma salli ala Muhammad
-          Hasbi Allah wa ni'mal wakeel
-          EOF
-
-          cat > hadith_pool.txt << 'EOF'
-          The Prophet said: Do not turn your homes into graves, for Satan flees from the house where Surah Al-Baqarah is recited
-          The Prophet said: Recite Surah Al-Baqarah, for taking it is a blessing and leaving it is a regret
-          The Prophet said: Whoever recites the last two verses of Surah Al-Baqarah at night, they will suffice him
-          The Prophet said: Whoever recites Surah Al-Kahf on Friday, a light will shine for him between the two Fridays
-          The Prophet said: The best of you are those who learn the Quran and teach it
-          EOF
 
       - name: Stream to YouTube
         env:
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
           TZ: 'Asia/Amman'
           PRAYER_MAIN: ${{ steps.data.outputs.prayer_main }}
-          PRAYER_SECONDARY: ${{ steps.data.outputs.prayer_secondary }}
-          HIJRI: ${{ steps.data.outputs.hijri }}
           GREGORIAN: ${{ steps.data.outputs.gregorian }}
-          WEATHER: ${{ steps.data.outputs.weather }}
-          NEXT_PRAYER: ${{ steps.data.outputs.next_prayer }}
-          NEXT_OFFSET: ${{ steps.data.outputs.next_offset }}
-          AR_DAY: ${{ steps.day.outputs.arabic_day }}
           SURAH: ${{ steps.day.outputs.surah_name }}
           IS_FRIDAY: ${{ steps.day.outputs.is_friday }}
         run: |
@@ -208,68 +115,19 @@ jobs:
           [ ! -f "$FONT" ] && FONT="/usr/share/fonts/opentype/noto/NotoNaskhArabic-Regular.ttf"
           [ ! -f "$FONT" ] && FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
-          shuf -n 1 verses_pool.txt > /tmp/verse.txt
-          shuf -n 1 dhikr_pool.txt > /tmp/dhikr.txt
-          shuf -n 1 hadith_pool.txt > /tmp/hadith.txt
-          echo "00.00" > /tmp/clock.txt
-          echo "Elapsed: 00:00:00" > /tmp/uptime.txt
-          echo "Cycle: 1" > /tmp/cycle.txt
-          echo "Progress: [--------------------]" > /tmp/progress.txt
-
-          (while true; do sleep 60; TZ='Asia/Amman' date '+%H.%M' > /tmp/c.tmp && mv /tmp/c.tmp /tmp/clock.txt; done) & C_PID=$!
-          (while true; do sleep 300; shuf -n 1 verses_pool.txt > /tmp/v.tmp && mv /tmp/v.tmp /tmp/verse.txt; done) & V_PID=$!
-          (while true; do sleep 180; shuf -n 1 dhikr_pool.txt > /tmp/d.tmp && mv /tmp/d.tmp /tmp/dhikr.txt; done) & D_PID=$!
-          (while true; do sleep 600; shuf -n 1 hadith_pool.txt > /tmp/h.tmp && mv /tmp/h.tmp /tmp/hadith.txt; done) & H_PID=$!
-
-          (S=0; while true; do
-            sleep 10
-            S=$((S+10))
-            HH=$((S/3600)); MM=$(((S%3600)/60)); SS=$((S%60))
-            printf "Elapsed: %02d:%02d:%02d" $HH $MM $SS > /tmp/u.tmp && mv /tmp/u.tmp /tmp/uptime.txt
-            if [ "${AUDIO_DURATION:-0}" -gt 0 ]; then
-              P=$((S % AUDIO_DURATION * 100 / AUDIO_DURATION))
-              BARS=$((P / 5))
-              BAR=""
-              for i in $(seq 1 20); do
-                if [ $i -le $BARS ]; then BAR="${BAR}>"; else BAR="${BAR}-"; fi
-              done
-              echo "Progress: [$BAR]" > /tmp/p.tmp && mv /tmp/p.tmp /tmp/progress.txt
-              CYCLE=$((S / AUDIO_DURATION + 1))
-              printf "Cycle: %d" "$CYCLE" > /tmp/cyc.tmp && mv /tmp/cyc.tmp /tmp/cycle.txt
-            fi
-          done) & U_PID=$!
-
-          trap "kill $C_PID $V_PID $D_PID $H_PID $U_PID 2>/dev/null || true" EXIT INT TERM
-
-          VF="scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1"
-          VF="$VF,zoompan=z='min(zoom+0.00002,1.04)':d=1:s=1920x1080:fps=30"
-          VF="$VF,eq=brightness='0.015*sin(n/400)':eval=frame"
-
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/clock.txt:reload=1:expansion=none:fontsize=52:fontcolor=white:x=w-tw-40:y=40:box=1:boxcolor=black@0.55:boxborderw=14"
-          VF="$VF,drawtext=fontfile=$FONT:text='$PRAYER_MAIN':fontsize=22:fontcolor=gold:x=40:y=40:box=1:boxcolor=black@0.55:boxborderw=10"
-
-          if [ -n "$PRAYER_SECONDARY" ]; then
-            VF="$VF,drawtext=fontfile=$FONT:text='$PRAYER_SECONDARY':fontsize=19:fontcolor=white:x=40:y=95:box=1:boxcolor=black@0.55:boxborderw=10"
-          fi
-
-          VF="$VF,drawtext=fontfile=$FONT:text='$HIJRI | $GREGORIAN | $AR_DAY | Amman $WEATHER':fontsize=19:fontcolor=white:x=40:y=145:box=1:boxcolor=black@0.55:boxborderw=10"
-          VF="$VF,drawtext=fontfile=$FONT:text='$SURAH':fontsize=26:fontcolor=gold:x=w-tw-40:y=110:box=1:boxcolor=black@0.55:boxborderw=10"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/uptime.txt:reload=1:expansion=none:fontsize=22:fontcolor=white:x=w-tw-40:y=h-th-40:box=1:boxcolor=black@0.55:boxborderw=10"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cycle.txt:reload=1:expansion=none:fontsize=22:fontcolor=cyan:x=w-tw-40:y=h-th-90:box=1:boxcolor=black@0.55:boxborderw=10"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/progress.txt:reload=1:expansion=none:fontsize=20:fontcolor=lime:x=40:y=h-th-40:box=1:boxcolor=black@0.55:boxborderw=10"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/dhikr.txt:reload=1:expansion=none:fontsize=26:fontcolor=white:x=(w-tw)/2:y=h-th-90:box=1:boxcolor=black@0.65:boxborderw=14"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/verse.txt:reload=1:expansion=none:fontsize=24:fontcolor=lightyellow:x=(w-tw)/2:y=h-th-190:box=1:boxcolor=black@0.7:boxborderw=12"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/hadith.txt:reload=1:expansion=none:fontsize=22:fontcolor=white:x=(w-tw)/2:y=h-th-250:box=1:boxcolor=darkgreen@0.75:boxborderw=14:enable='lt(mod(t\,600)\,30)'"
-          VF="$VF,drawtext=fontfile=$FONT:text='Welcome to Omar Channel':fontsize=54:fontcolor=gold:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.75:boxborderw=20:enable='lt(t\,30)'"
+          # بناء سلسلة الفلاتر - بسيطة وثابتة (بدون reload أو zoompan)
+          VF="scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
+          VF="$VF,drawtext=fontfile=$FONT:text='$PRAYER_MAIN':fontsize=22:fontcolor=gold:x=40:y=40:box=1:boxcolor=black@0.6:boxborderw=10"
+          VF="$VF,drawtext=fontfile=$FONT:text='$GREGORIAN':fontsize=22:fontcolor=white:x=40:y=90:box=1:boxcolor=black@0.6:boxborderw=10"
+          VF="$VF,drawtext=fontfile=$FONT:text='$SURAH':fontsize=28:fontcolor=gold:x=w-tw-40:y=40:box=1:boxcolor=black@0.6:boxborderw=12"
+          VF="$VF,drawtext=fontfile=$FONT:text='Live Quran Stream':fontsize=24:fontcolor=white:x=(w-tw)/2:y=h-90:box=1:boxcolor=black@0.6:boxborderw=12"
 
           if [ "$IS_FRIDAY" = "true" ]; then
-            VF="$VF,drawtext=fontfile=$FONT:text='Jumua Mubaraka':fontsize=34:fontcolor=gold:x=(w-tw)/2:y=200:box=1:boxcolor=black@0.65:boxborderw=16"
+            VF="$VF,drawtext=fontfile=$FONT:text='Jumua Mubaraka':fontsize=34:fontcolor=gold:x=(w-tw)/2:y=200:box=1:boxcolor=black@0.7:boxborderw=16"
           fi
 
-          VF="$VF,drawtext=fontfile=$FONT:text='Next Prayer: $NEXT_PRAYER':fontsize=24:fontcolor=orange:x=(w-tw)/2:y=h-th-140:box=1:boxcolor=black@0.6:boxborderw=12"
-          VF="$VF,format=yuv420p"
-
           echo "Starting stream..."
+          echo "Active filters: $(echo "$VF" | grep -o 'drawtext' | wc -l)"
 
           timeout 21300 ffmpeg \
             -re -stream_loop -1 -f concat -safe 0 -i images.txt \
@@ -279,5 +137,3 @@ jobs:
             -b:v 1500k -maxrate 1500k -bufsize 3000k -g 50 \
             -c:a aac -b:a 192k -ar 44100 \
             -f flv "$RTMP_URL" || echo "Stream stopped"
-
-          kill $C_PID $V_PID $D_PID $H_PID $U_PID 2>/dev/null || true
