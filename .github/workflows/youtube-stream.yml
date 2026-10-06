@@ -71,6 +71,27 @@ jobs:
             FAJR="05.15"; DHUHR="12.30"; ASR="15.45"; MAGHRIB="18.30"; ISHA="19.55"
           fi
           echo "prayer_main=Amman  Fajr $FAJR  Dhuhr $DHUHR  Asr $ASR  Maghrib $MAGHRIB  Isha $ISHA" >> $GITHUB_OUTPUT
+          echo "amman_fajr=$(echo $FAJR | tr '.' ':')" >> $GITHUB_OUTPUT
+          echo "amman_dhuhr=$(echo $DHUHR | tr '.' ':')" >> $GITHUB_OUTPUT
+          echo "amman_asr=$(echo $ASR | tr '.' ':')" >> $GITHUB_OUTPUT
+          echo "amman_maghrib=$(echo $MAGHRIB | tr '.' ':')" >> $GITHUB_OUTPUT
+          echo "amman_isha=$(echo $ISHA | tr '.' ':')" >> $GITHUB_OUTPUT
+
+          RESP_M=$(curl -s --max-time 20 "https://api.aladhan.com/v1/timingsByCity?city=Makkah&country=Saudi%20Arabia&method=4" || echo "")
+          if echo "$RESP_M" | grep -q '"Fajr"'; then
+            M_FAJR=$(echo "$RESP_M" | jq -r '.data.timings.Fajr' | cut -d' ' -f1)
+            M_DHUHR=$(echo "$RESP_M" | jq -r '.data.timings.Dhuhr' | cut -d' ' -f1)
+            M_ASR=$(echo "$RESP_M" | jq -r '.data.timings.Asr' | cut -d' ' -f1)
+            M_MAGHRIB=$(echo "$RESP_M" | jq -r '.data.timings.Maghrib' | cut -d' ' -f1)
+            M_ISHA=$(echo "$RESP_M" | jq -r '.data.timings.Isha' | cut -d' ' -f1)
+          else
+            M_FAJR="05:00"; M_DHUHR="12:15"; M_ASR="15:30"; M_MAGHRIB="18:00"; M_ISHA="19:30"
+          fi
+          echo "makkah_fajr=$M_FAJR" >> $GITHUB_OUTPUT
+          echo "makkah_dhuhr=$M_DHUHR" >> $GITHUB_OUTPUT
+          echo "makkah_asr=$M_ASR" >> $GITHUB_OUTPUT
+          echo "makkah_maghrib=$M_MAGHRIB" >> $GITHUB_OUTPUT
+          echo "makkah_isha=$M_ISHA" >> $GITHUB_OUTPUT
           echo "gregorian=$(TZ='Asia/Amman' date '+%Y/%m/%d')" >> $GITHUB_OUTPUT
 
       - name: Create Image Playlist
@@ -104,6 +125,16 @@ jobs:
           GREGORIAN: ${{ steps.data.outputs.gregorian }}
           SURAH: ${{ steps.day.outputs.surah_name }}
           IS_FRIDAY: ${{ steps.day.outputs.is_friday }}
+          AMMAN_FAJR: ${{ steps.data.outputs.amman_fajr }}
+          AMMAN_DHUHR: ${{ steps.data.outputs.amman_dhuhr }}
+          AMMAN_ASR: ${{ steps.data.outputs.amman_asr }}
+          AMMAN_MAGHRIB: ${{ steps.data.outputs.amman_maghrib }}
+          AMMAN_ISHA: ${{ steps.data.outputs.amman_isha }}
+          MAKKAH_FAJR: ${{ steps.data.outputs.makkah_fajr }}
+          MAKKAH_DHUHR: ${{ steps.data.outputs.makkah_dhuhr }}
+          MAKKAH_ASR: ${{ steps.data.outputs.makkah_asr }}
+          MAKKAH_MAGHRIB: ${{ steps.data.outputs.makkah_maghrib }}
+          MAKKAH_ISHA: ${{ steps.data.outputs.makkah_isha }}
         run: |
           if [ -z "$YOUTUBE_STREAM_KEY" ]; then
             echo "Stream key missing"
@@ -114,42 +145,67 @@ jobs:
           FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
           [ ! -f "$FONT" ] && FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
-          # ====== ملف الساعة الحية ======
           TZ='Asia/Amman' date '+%H.%M' > /tmp/clock.txt
-          # تحديث الساعة كل 60 ثانية في الخلفية
+
+          update_countdown() {
+            local TZ_NAME="$1"
+            local F="$2"
+            local D="$3"
+            local A="$4"
+            local M="$5"
+            local I="$6"
+            local NOW=$(TZ="$TZ_NAME" date +%s)
+            local BEST_NAME=""
+            local BEST_OFF=999999
+            for p in "Fajr:$F" "Dhuhr:$D" "Asr:$A" "Maghrib:$M" "Isha:$I"; do
+              local nm="${p%%:*}"
+              local t="${p##*:}"
+              [ -z "$t" ] && continue
+              local PE=$(TZ="$TZ_NAME" date -d "today $t" +%s 2>/dev/null || echo "$NOW")
+              [ $PE -lt $NOW ] && PE=$((PE + 86400))
+              local OFF=$((PE - NOW))
+              if [ $OFF -lt $BEST_OFF ]; then
+                BEST_OFF=$OFF
+                BEST_NAME="$nm"
+              fi
+            done
+            local HH=$((BEST_OFF / 3600))
+            local MM=$(((BEST_OFF % 3600) / 60))
+            if [ $HH -gt 0 ]; then
+              printf "%s in %dh %dm" "$BEST_NAME" "$HH" "$MM"
+            else
+              printf "%s in %dm" "$BEST_NAME" "$MM"
+            fi
+          }
+
+          update_countdown "Asia/Amman" "$AMMAN_FAJR" "$AMMAN_DHUHR" "$AMMAN_ASR" "$AMMAN_MAGHRIB" "$AMMAN_ISHA" > /tmp/cd_amman.txt
+          update_countdown "Asia/Riyadh" "$MAKKAH_FAJR" "$MAKKAH_DHUHR" "$MAKKAH_ASR" "$MAKKAH_MAGHRIB" "$MAKKAH_ISHA" > /tmp/cd_makkah.txt
+
+          echo "Amman countdown: $(cat /tmp/cd_amman.txt)"
+          echo "Makkah countdown: $(cat /tmp/cd_makkah.txt)"
+
           (while true; do
             sleep 60
             TZ='Asia/Amman' date '+%H.%M' > /tmp/c.tmp && mv /tmp/c.tmp /tmp/clock.txt
+            update_countdown "Asia/Amman" "$AMMAN_FAJR" "$AMMAN_DHUHR" "$AMMAN_ASR" "$AMMAN_MAGHRIB" "$AMMAN_ISHA" > /tmp/cda.tmp && mv /tmp/cda.tmp /tmp/cd_amman.txt
+            update_countdown "Asia/Riyadh" "$MAKKAH_FAJR" "$MAKKAH_DHUHR" "$MAKKAH_ASR" "$MAKKAH_MAGHRIB" "$MAKKAH_ISHA" > /tmp/cdm.tmp && mv /tmp/cdm.tmp /tmp/cd_makkah.txt
           done) & C_PID=$!
           trap "kill $C_PID 2>/dev/null || true" EXIT INT TERM
 
-          echo "Initial clock: $(cat /tmp/clock.txt)"
-
-          # ====== بناء الفلاتر ======
           VF="fps=25,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
-
-          # الساعة الحية (أعلى يمين) - reload=1 مع expansion=none
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/clock.txt:reload=1:expansion=none:fontsize=52:fontcolor=white:x=w-tw-40:y=40:box=1:boxcolor=black@0.6:boxborderw=14"
-
-          # مواقيت الصلاة (أعلى يسار، سطر 1)
           VF="$VF,drawtext=fontfile=$FONT:text='$PRAYER_MAIN':fontsize=22:fontcolor=gold:x=40:y=40:box=1:boxcolor=black@0.6:boxborderw=10"
-
-          # التاريخ الميلادي (أعلى يسار، سطر 2)
           VF="$VF,drawtext=fontfile=$FONT:text='$GREGORIAN':fontsize=22:fontcolor=white:x=40:y=90:box=1:boxcolor=black@0.6:boxborderw=10"
-
-          # اسم السورة (أعلى يمين، تحت الساعة)
           VF="$VF,drawtext=fontfile=$FONT:text='$SURAH':fontsize=28:fontcolor=gold:x=w-tw-40:y=110:box=1:boxcolor=black@0.6:boxborderw=12"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_amman.txt:reload=1:expansion=none:fontsize=26:fontcolor=yellow:x=(w-tw)/2:y=h-170:box=1:boxcolor=black@0.7:boxborderw=12"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_makkah.txt:reload=1:expansion=none:fontsize=26:fontcolor=lightgreen:x=(w-tw)/2:y=h-130:box=1:boxcolor=black@0.7:boxborderw=12"
+          VF="$VF,drawtext=fontfile=$FONT:text='Live Quran Stream':fontsize=24:fontcolor=white:x=(w-tw)/2:y=h-80:box=1:boxcolor=black@0.6:boxborderw=12"
 
-          # شعار ثابت (أسفل وسط)
-          VF="$VF,drawtext=fontfile=$FONT:text='Live Quran Stream':fontsize=24:fontcolor=white:x=(w-tw)/2:y=h-90:box=1:boxcolor=black@0.6:boxborderw=12"
-
-          # تحية الجمعة
           if [ "$IS_FRIDAY" = "true" ]; then
             VF="$VF,drawtext=fontfile=$FONT:text='Jumua Mubaraka':fontsize=34:fontcolor=gold:x=(w-tw)/2:y=200:box=1:boxcolor=black@0.7:boxborderw=16"
           fi
 
-          echo "Starting stream with live clock..."
-          echo "Active filters: $(echo "$VF" | grep -o 'drawtext' | wc -l)"
+          echo "Starting stream with 2 countdowns..."
 
           timeout 21300 ffmpeg \
             -stream_loop -1 -f concat -safe 0 -i images.txt \
