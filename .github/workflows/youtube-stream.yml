@@ -114,18 +114,42 @@ jobs:
           FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
           [ ! -f "$FONT" ] && FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
-          VF="fps=25,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
-          VF="$VF,drawtext=fontfile=$FONT:text='$PRAYER_MAIN':fontsize=24:fontcolor=gold:x=40:y=40:box=1:boxcolor=black@0.6:boxborderw=10"
-          VF="$VF,drawtext=fontfile=$FONT:text='$GREGORIAN':fontsize=24:fontcolor=white:x=40:y=90:box=1:boxcolor=black@0.6:boxborderw=10"
-          VF="$VF,drawtext=fontfile=$FONT:text='$SURAH':fontsize=32:fontcolor=gold:x=w-tw-40:y=40:box=1:boxcolor=black@0.6:boxborderw=12"
-          VF="$VF,drawtext=fontfile=$FONT:text='Live Quran Stream':fontsize=28:fontcolor=white:x=(w-tw)/2:y=h-90:box=1:boxcolor=black@0.6:boxborderw=12"
+          # ====== ملف الساعة الحية ======
+          TZ='Asia/Amman' date '+%H.%M' > /tmp/clock.txt
+          # تحديث الساعة كل 60 ثانية في الخلفية
+          (while true; do
+            sleep 60
+            TZ='Asia/Amman' date '+%H.%M' > /tmp/c.tmp && mv /tmp/c.tmp /tmp/clock.txt
+          done) & C_PID=$!
+          trap "kill $C_PID 2>/dev/null || true" EXIT INT TERM
 
+          echo "Initial clock: $(cat /tmp/clock.txt)"
+
+          # ====== بناء الفلاتر ======
+          VF="fps=25,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
+
+          # الساعة الحية (أعلى يمين) - reload=1 مع expansion=none
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/clock.txt:reload=1:expansion=none:fontsize=52:fontcolor=white:x=w-tw-40:y=40:box=1:boxcolor=black@0.6:boxborderw=14"
+
+          # مواقيت الصلاة (أعلى يسار، سطر 1)
+          VF="$VF,drawtext=fontfile=$FONT:text='$PRAYER_MAIN':fontsize=22:fontcolor=gold:x=40:y=40:box=1:boxcolor=black@0.6:boxborderw=10"
+
+          # التاريخ الميلادي (أعلى يسار، سطر 2)
+          VF="$VF,drawtext=fontfile=$FONT:text='$GREGORIAN':fontsize=22:fontcolor=white:x=40:y=90:box=1:boxcolor=black@0.6:boxborderw=10"
+
+          # اسم السورة (أعلى يمين، تحت الساعة)
+          VF="$VF,drawtext=fontfile=$FONT:text='$SURAH':fontsize=28:fontcolor=gold:x=w-tw-40:y=110:box=1:boxcolor=black@0.6:boxborderw=12"
+
+          # شعار ثابت (أسفل وسط)
+          VF="$VF,drawtext=fontfile=$FONT:text='Live Quran Stream':fontsize=24:fontcolor=white:x=(w-tw)/2:y=h-90:box=1:boxcolor=black@0.6:boxborderw=12"
+
+          # تحية الجمعة
           if [ "$IS_FRIDAY" = "true" ]; then
-            VF="$VF,drawtext=fontfile=$FONT:text='Jumua Mubaraka':fontsize=38:fontcolor=gold:x=(w-tw)/2:y=200:box=1:boxcolor=black@0.7:boxborderw=16"
+            VF="$VF,drawtext=fontfile=$FONT:text='Jumua Mubaraka':fontsize=34:fontcolor=gold:x=(w-tw)/2:y=200:box=1:boxcolor=black@0.7:boxborderw=16"
           fi
 
-          echo "Starting stream..."
-          echo "Font: $FONT"
+          echo "Starting stream with live clock..."
+          echo "Active filters: $(echo "$VF" | grep -o 'drawtext' | wc -l)"
 
           timeout 21300 ffmpeg \
             -stream_loop -1 -f concat -safe 0 -i images.txt \
@@ -136,3 +160,5 @@ jobs:
             -b:v 1500k -maxrate 1500k -bufsize 3000k -g 50 \
             -c:a aac -b:a 192k -ar 44100 \
             -f flv "$RTMP_URL" || echo "Stream stopped"
+
+          kill $C_PID 2>/dev/null || true
