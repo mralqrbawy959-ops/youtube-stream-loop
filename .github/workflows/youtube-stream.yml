@@ -1,12 +1,25 @@
-name: YouTube Live Stream (Audio + Image Loop - 6 Hours)
+name: YouTube Live Stream (Auto 12 Hours Daily)
 
 on:
+  # 1. التشغيل اليدوي (إذا أردت تشغيله بنفسك في أي وقت)
   workflow_dispatch:
+  
+  # 2. التشغيل التلقائي (مرتين يومياً لمدة 6 ساعات لكل بث)
+  schedule:
+    # البث الأول: 8:00 صباحاً UTC (11:00 صباحاً بتوقيت الأردن)
+    - cron: '0 8 * * *'
+    # البث الثاني: 8:00 مساءً UTC (11:00 مساءً بتوقيت الأردن)
+    - cron: '0 20 * * *'
+
+# منع تشغيل أكثر من بث في نفس الوقت لتجنب تعارض مفاتيح البث
+concurrency:
+  group: youtube-live
+  cancel-in-progress: false
 
 jobs:
   stream:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 360  # حد أقصى 6 ساعات (سيتم إيقافه تلقائياً بأمان قبلها)
 
     steps:
       - name: Checkout repository
@@ -32,7 +45,7 @@ jobs:
       - name: Verify files exist
         run: |
           echo "🔍 التحقق من وجود الملفات..."
-          ls -lh cover.jpg audio.mp3 || (echo "❌ خطأ: تأكد من وجود cover.jpg و audio.mp3" && exit 1)
+          ls -lh cover.jpg audio.mp3 || (echo "❌ خطأ: تأكد من وجود cover.jpg" && exit 1)
 
       - name: Stream to YouTube
         env:
@@ -44,9 +57,11 @@ jobs:
           fi
 
           RTMP_URL="rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
-          echo "🎥 بدء دمج الصورة مع الصوت وبثهما بشكل مستمر..."
+          echo "🎥 بدء دمج الصورة مع الصوت وبثهما بشكل مستمر بسرعة الوقت الحقيقي..."
 
-          timeout 21300 ffmpeg -loop 1 -i cover.jpg -stream_loop -1 -i audio.mp3 \
+          # -re : إجبار FFmpeg على العمل بسرعة الوقت الحقيقي (Real-time)
+          # timeout 21300 : إيقاف البث بأمان بعد 5 ساعات و55 دقيقة
+          timeout 21300 ffmpeg -re -loop 1 -i cover.jpg -re -stream_loop -1 -i audio.mp3 \
             -c:v libx264 -preset veryfast -tune stillimage \
             -b:v 1500k -maxrate 1500k -bufsize 3000k \
             -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p" \
