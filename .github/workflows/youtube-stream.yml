@@ -1,11 +1,11 @@
-name: YouTube Live Stream (Full Arabic Edition)
+name: YouTube Live Stream (Ultimate Arabic Edition)
 
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 2 * * 5'
     - cron: '0 8 * * *'
-    - cron: '0 20 * * *'
+    - cron: '5 14 * * *'
 
 concurrency:
   group: youtube-live
@@ -24,6 +24,18 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg fonts-noto-core jq curl
+
+      - name: Verify Arabic Font
+        run: |
+          FONT="/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
+          if [ ! -f "$FONT" ]; then
+            FONT=$(find /usr/share/fonts -name "NotoNaskhArabic*.ttf" 2>/dev/null | head -1)
+          fi
+          if [ -z "$FONT" ]; then
+            echo "Arabic font missing!"
+            exit 1
+          fi
+          echo "Arabic font OK: $FONT"
 
       - name: Detect Day and Pick Audio
         id: day
@@ -117,42 +129,53 @@ jobs:
           IS_FRIDAY: ${{ steps.day.outputs.is_friday }}
         run: |
           if [ "$IS_FRIDAY" = "true" ]; then
-            cat > hadith_pool.txt << 'EOF'
-          من قرأ سورة الكهف يوم الجمعة أضاء له من النور ما بين الجمعتين
-          من قرأ سورة الكهف في يوم الجمعة عصم من فتنة الدجال
-          الجمعة سيد الأيام وسورة الكهف تاجها
-          أكثروا من الصلاة عليّ يوم الجمعة فإنها معروضة عليّ
-          إن في الجمعة ساعة لا يوافقها مسلم يسأل الله فيها خيراً إلا أعطاه
-          خير يوم طلعت عليه الشمس يوم الجمعة
-          من اغتسل يوم الجمعة ومسّ من طيب ولبس أحسن ثيابه غُفر له ما بينه وبين الجمعة الأخرى
-          يَا أَيُّهَا الَّذِينَ آمَنُوا إِذَا نُودِيَ لِلصَّلَاةِ مِن يَوْمِ الْجُمُعَةِ فَاسْعَوْا إِلَىٰ ذِكْرِ اللَّهِ
-          EOF
+            printf '%s\n' \
+              "من قرأ سورة الكهف يوم الجمعة أضاء له من النور ما بين الجمعتين" \
+              "من قرأ سورة الكهف في يوم الجمعة عصم من فتنة الدجال" \
+              "الجمعة سيد الأيام وسورة الكهف تاجها" \
+              "أكثروا من الصلاة عليّ يوم الجمعة فإنها معروضة عليّ" \
+              "إن في الجمعة ساعة لا يوافقها مسلم يسأل الله فيها خيراً إلا أعطاه" \
+              "خير يوم طلعت عليه الشمس يوم الجمعة" \
+              "من اغتسل يوم الجمعة ومسّ من طيب ولبس أحسن ثيابه غُفر له ما بينه وبين الجمعة الأخرى" \
+              > hadith_pool.txt
           else
-            cat > hadith_pool.txt << 'EOF'
-          لا تجعلوا بيوتكم مقابر، إن الشيطان ينفر من البيت الذي تُقرأ فيه سورة البقرة
-          اقرؤوا سورة البقرة، فإن أخذها بركة، وتركها حسرة، ولا تستطيعها البطلة
-          من قرأ الآيتين الأخيرتين من سورة البقرة في ليلة كفتاه
-          آية الكرسي أعظم آية في كتاب الله، وهي في سورة البقرة
-          إن لكل شيء سناماً، وإن سنام القرآن سورة البقرة
-          خيركم من تعلم القرآن وعلمه
-          اقرؤوا القرآن، فإنه يأتي يوم القيامة شفيعاً لأصحابه
-          الماهر بالقرآن مع السفرة الكرام البررة
-          إِنَّ هَذَا الْقُرْآنَ يَهْدِي لِلَّتِي هِيَ أَقْوَمُ
-          EOF
+            printf '%s\n' \
+              "لا تجعلوا بيوتكم مقابر، إن الشيطان ينفر من البيت الذي تُقرأ فيه سورة البقرة" \
+              "اقرؤوا سورة البقرة، فإن أخذها بركة، وتركها حسرة، ولا تستطيعها البطلة" \
+              "من قرأ الآيتين الأخيرتين من سورة البقرة في ليلة كفتاه" \
+              "آية الكرسي أعظم آية في كتاب الله، وهي في سورة البقرة" \
+              "إن لكل شيء سناماً، وإن سنام القرآن سورة البقرة" \
+              "خيركم من تعلم القرآن وعلمه" \
+              "اقرؤوا القرآن، فإنه يأتي يوم القيامة شفيعاً لأصحابه" \
+              "الماهر بالقرآن مع السفرة الكرام البررة" \
+              > hadith_pool.txt
           fi
 
-          cat > adhkar_pool.txt << 'EOF'
-          سبحان الله وبحمده، سبحان الله العظيم
-          لا إله إلا الله وحده لا شريك له
-          الحمد لله رب العالمين
-          الله أكبر كبيراً، والحمد لله كثيراً
-          لا حول ولا قوة إلا بالله
-          أستغفر الله العظيم وأتوب إليه
-          اللهم صلِّ وسلم على نبينا محمد
-          حسبي الله ونعم الوكيل
-          لا إله إلا الله، عدد خلقه، ورضا نفسه، وزنة عرشه، ومداد كلماته
-          اللهم إني أسألك الجنة وأعوذ بك من النار
-          EOF
+          printf '%s\n' \
+            "سبحان الله وبحمده، سبحان الله العظيم" \
+            "لا إله إلا الله وحده لا شريك له" \
+            "الحمد لله رب العالمين" \
+            "الله أكبر كبيراً، والحمد لله كثيراً" \
+            "لا حول ولا قوة إلا بالله" \
+            "أستغفر الله العظيم وأتوب إليه" \
+            "اللهم صلِّ وسلم على نبينا محمد" \
+            "حسبي الله ونعم الوكيل" \
+            "لا إله إلا الله، عدد خلقه، ورضا نفسه، وزنة عرشه، ومداد كلماته" \
+            "اللهم إني أسألك الجنة وأعوذ بك من النار" \
+            > adhkar_pool.txt
+
+          printf '%s\n' \
+            "اكتب في التعليقات: صلوا على النبي محمد ﷺ" \
+            "شارك البث مع أحبابك، فالدال على الخير كفاعله" \
+            "اشترك في القناة وفعّل الجرس ليصلك كل جديد" \
+            "اكتب في التعليقات: لا إله إلا الله" \
+            "اكتب في التعليقات: سبحان الله وبحمده" \
+            "لا تنسونا من صالح دعائكم" \
+            "شغّل البث في بيتك لتغمره البركة والسكينة" \
+            "اكتب: اللهم صلِّ وسلم على نبينا محمد" \
+            "شارك البث مع أهلك وأصدقائك وجيرانك" \
+            "اضغط زر الإعجاب لدعم القناة" \
+            > cta_pool.txt
 
       - name: Stream to YouTube
         env:
@@ -187,10 +210,11 @@ jobs:
           echo "$SURAH_AR" > /tmp/surah_ar.txt
           shuf -n 1 hadith_pool.txt > /tmp/hadith.txt
           shuf -n 1 adhkar_pool.txt > /tmp/dhikr.txt
+          shuf -n 1 cta_pool.txt > /tmp/cta.txt
           echo " " > /tmp/prayer_notify.txt
 
           printf "عمّان  الفجر %s  الظهر %s  العصر %s  المغرب %s  العشاء %s" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/amman_line.txt
-          echo "$(TZ='Asia/Amman' date '+%Y-%m-%d')" > /tmp/date.txt
+          TZ='Asia/Amman' date '+%Y.%m.%d' > /tmp/date.txt
 
           update_countdown() {
             local TZ_NAME="$1"
@@ -251,6 +275,7 @@ jobs:
 
           echo "Amman: $(cat /tmp/cd_amman.txt)"
           echo "Makkah: $(cat /tmp/cd_makkah.txt)"
+          echo "CTA: $(cat /tmp/cta.txt)"
 
           (while true; do
             sleep 60
@@ -270,28 +295,35 @@ jobs:
             shuf -n 1 adhkar_pool.txt > /tmp/d.tmp && mv /tmp/d.tmp /tmp/dhikr.txt
           done) & D_PID=$!
 
-          trap "kill $C_PID $H_PID $D_PID 2>/dev/null || true" EXIT INT TERM
+          (while true; do
+            sleep 240
+            shuf -n 1 cta_pool.txt > /tmp/cta.tmp && mv /tmp/cta.tmp /tmp/cta.txt
+          done) & T_PID=$!
+
+          trap "kill $C_PID $H_PID $D_PID $T_PID 2>/dev/null || true" EXIT INT TERM
 
           VF="fps=25,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/clock.txt:reload=1:expansion=none:fontsize=52:fontcolor=white:x=w-tw-40:y=40:box=1:boxcolor=black@0.65:boxborderw=14"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/amman_line.txt:expansion=none:text_shaping=1:fontsize=22:fontcolor=gold:x=40:y=40:box=1:boxcolor=black@0.65:boxborderw=10"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/date.txt:reload=1:expansion=none:fontsize=22:fontcolor=white:x=40:y=90:box=1:boxcolor=black@0.65:boxborderw=10"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/surah_ar.txt:reload=1:expansion=none:text_shaping=1:fontsize=32:fontcolor=gold:x=w-tw-40:y=110:box=1:boxcolor=black@0.65:boxborderw=14"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/hadith.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=white:x=(w-tw)/2:y=180:box=1:boxcolor=darkgreen@0.85:boxborderw=18"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/dhikr.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=white:x=(w-tw)/2:y=240:box=1:boxcolor=navy@0.85:boxborderw=16"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/prayer_notify.txt:reload=1:expansion=none:text_shaping=1:fontsize=60:fontcolor=gold:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.9:boxborderw=30"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_amman.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=yellow:x=(w-tw)/2:y=h-180:box=1:boxcolor=black@0.75:boxborderw=14"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_makkah.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=lightgreen:x=(w-tw)/2:y=h-135:box=1:boxcolor=black@0.75:boxborderw=14"
-          VF="$VF,drawtext=fontfile=$FONT:text='بث القرآن الكريم مباشر':expansion=none:text_shaping=1:fontsize=24:fontcolor=white:x=(w-tw)/2:y=h-85:box=1:boxcolor=black@0.65:boxborderw=12"
+
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/clock.txt:reload=1:expansion=none:fontsize=54:fontcolor=white:x=w-tw-40:y=40:box=1:boxcolor=black@0.75:boxborderw=18"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/surah_ar.txt:reload=1:expansion=none:text_shaping=1:fontsize=32:fontcolor=0xD4AF37:x=w-tw-40:y=115:box=1:boxcolor=black@0.75:boxborderw=18"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/amman_line.txt:expansion=none:text_shaping=1:fontsize=22:fontcolor=0xD4AF37:x=40:y=40:box=1:boxcolor=black@0.75:boxborderw=14"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/date.txt:reload=1:expansion=none:fontsize=22:fontcolor=white:x=40:y=90:box=1:boxcolor=black@0.75:boxborderw=14"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/hadith.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=180:box=1:boxcolor=black@0.85:boxborderw=22"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/dhikr.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=white:x=(w-tw)/2:y=245:box=1:boxcolor=black@0.85:boxborderw=20"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cta.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=310:box=1:boxcolor=black@0.85:boxborderw=22"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/prayer_notify.txt:reload=1:expansion=none:text_shaping=1:fontsize=60:fontcolor=0xD4AF37:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.9:boxborderw=35"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_amman.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-160:box=1:boxcolor=black@0.8:boxborderw=18"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_makkah.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-115:box=1:boxcolor=black@0.8:boxborderw=18"
+          VF="$VF,drawtext=fontfile=$FONT:text='بث القرآن الكريم مباشر':expansion=none:text_shaping=1:fontsize=24:fontcolor=white:x=(w-tw)/2:y=h-70:box=1:boxcolor=black@0.75:boxborderw=16"
 
           if [ "$IS_FRIDAY" = "true" ]; then
-            VF="$VF,drawtext=fontfile=$FONT:text='جمعة مباركة - يوم سورة الكهف':expansion=none:text_shaping=1:fontsize=36:fontcolor=gold:x=(w-tw)/2:y=320:box=1:boxcolor=black@0.8:boxborderw=18"
+            VF="$VF,drawtext=fontfile=$FONT:text='جمعة مباركة - يوم سورة الكهف':expansion=none:text_shaping=1:fontsize=36:fontcolor=0xD4AF37:x=(w-tw)/2:y=400:box=1:boxcolor=black@0.85:boxborderw=22"
           fi
 
           VF="$VF,format=yuv420p"
 
-          echo "بدء البث..."
-          echo "عدد الفلاتر: $(echo "$VF" | grep -o 'drawtext' | wc -l)"
+          echo "Starting stream..."
+          echo "Filters: $(echo "$VF" | grep -o 'drawtext' | wc -l)"
 
           timeout 21300 ffmpeg \
             -stream_loop -1 -f concat -safe 0 -i images.txt \
@@ -301,6 +333,6 @@ jobs:
             -c:v libx264 -preset veryfast -tune stillimage \
             -b:v 1500k -maxrate 1500k -bufsize 3000k -g 50 \
             -c:a aac -b:a 192k -ar 44100 \
-            -f flv "$RTMP_URL" || echo "تم إيقاف البث"
+            -f flv "$RTMP_URL" || echo "Stream stopped"
 
-          kill $C_PID $H_PID $D_PID 2>/dev/null || true
+          kill $C_PID $H_PID $D_PID $T_PID 2>/dev/null || true
