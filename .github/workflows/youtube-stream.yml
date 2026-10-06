@@ -1,16 +1,11 @@
 name: YouTube Live Stream (Audio + Image Loop - 6 Hours)
 
 on:
-  # التشغيل اليدوي
   workflow_dispatch:
-  # (اختياري) يمكنك إلغاء التعليق عن السطرين التاليين لتشغيله تلقائياً كل يوم الساعة 8 صباحاً بتوقيت UTC
-  # schedule:
-  #   - cron: '0 8 * * *'
 
 jobs:
   stream:
     runs-on: ubuntu-latest
-    # الحد الأقصى المسموح به في GitHub هو 360 دقيقة (6 ساعات)
     timeout-minutes: 360
 
     steps:
@@ -22,32 +17,39 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
 
+      - name: Download Audio File
+        env:
+          AUDIO_URL: ${{ secrets.AUDIO_URL }}
+        run: |
+          if [ -z "$AUDIO_URL" ]; then
+            echo "❌ خطأ: لم يتم تعيين رابط الصوت (AUDIO_URL) في Secrets"
+            exit 1
+          fi
+          echo "⬇️ جاري تحميل الملف الصوتي من الرابط الخارجي..."
+          wget -q --show-progress -O audio.mp3 "$AUDIO_URL"
+          ls -lh audio.mp3
+
       - name: Verify files exist
         run: |
           echo "🔍 التحقق من وجود الملفات..."
-          ls -lh cover.jpg audio.mp3 || (echo "❌ خطأ: تأكد من رفع cover.jpg و audio.mp3 في المجلد الرئيسي" && exit 1)
+          ls -lh cover.jpg audio.mp3 || (echo "❌ خطأ: تأكد من وجود cover.jpg و audio.mp3" && exit 1)
 
       - name: Stream to YouTube
         env:
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: |
           if [ -z "$YOUTUBE_STREAM_KEY" ]; then
-            echo "❌ خطأ: لم يتم تعيين مفتاح البث (YOUTUBE_STREAM_KEY) في Secrets"
+            echo "❌ خطأ: لم يتم تعيين مفتاح البث"
             exit 1
           fi
 
           RTMP_URL="rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
           echo "🎥 بدء دمج الصورة مع الصوت وبثهما بشكل مستمر..."
 
-          # timeout 21300 = 5 ساعات و 55 دقيقة (لإيقاف البث بأمان قبل حد GitHub)
-          # -loop 1 : تكرار الصورة
-          # -stream_loop -1 : تكرار الصوت بلا نهاية
-          # -tune stillimage : تحسين المعالجة للصور الثابتة
-          # scale=1920:1080 : ضبط أبعاد الصورة لتناسب يوتيوب
           timeout 21300 ffmpeg -loop 1 -i cover.jpg -stream_loop -1 -i audio.mp3 \
             -c:v libx264 -preset veryfast -tune stillimage \
             -b:v 1500k -maxrate 1500k -bufsize 3000k \
             -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p" \
             -g 50 \
             -c:a aac -b:a 192k -ar 44100 \
-            -f flv "$RTMP_URL" || echo "⏹️ تم إيقاف البث (إما بانتهاء الوقت أو يدوياً)"
+            -f flv "$RTMP_URL" || echo "⏹️ تم إيقاف البث"
