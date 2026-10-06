@@ -211,10 +211,33 @@ jobs:
           shuf -n 1 hadith_pool.txt > /tmp/hadith.txt
           shuf -n 1 adhkar_pool.txt > /tmp/dhikr.txt
           shuf -n 1 cta_pool.txt > /tmp/cta.txt
-          echo " " > /tmp/prayer_notify.txt
 
           printf "عمّان  الفجر %s  الظهر %s  العصر %s  المغرب %s  العشاء %s" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/amman_line.txt
           TZ='Asia/Amman' date '+%Y.%m.%d' > /tmp/date.txt
+
+          # حساب أوقات إشعار الصلاة
+          STREAM_START=$(date +%s)
+          TODAY_AMMAN=$(TZ='Asia/Amman' date '+%Y-%m-%d')
+          NOTIFY_ENABLE=""
+
+          for p in "الفجر|$A_F" "الظهر|$A_D" "العصر|$A_A" "المغرب|$A_M" "العشاء|$A_I"; do
+            AR="${p%%|*}"
+            t="${p##*|}"
+            [ -z "$t" ] && continue
+            PE=$(TZ='Asia/Amman' date -d "$TODAY_AMMAN $t" +%s 2>/dev/null)
+            [ -z "$PE" ] && continue
+            [ "$PE" -lt "$STREAM_START" ] && PE=$((PE + 86400))
+            OFFSET=$((PE - STREAM_START))
+            if [ "$OFFSET" -ge 0 ] && [ "$OFFSET" -lt 21300 ]; then
+              END=$((OFFSET + 180))
+              if [ -z "$NOTIFY_ENABLE" ]; then
+                NOTIFY_ENABLE="between(t,$OFFSET,$END)"
+              else
+                NOTIFY_ENABLE="$NOTIFY_ENABLE+between(t,$OFFSET,$END)"
+              fi
+              echo "إشعار: صلاة $AR بعد $OFFSET ثانية"
+            fi
+          done
 
           update_countdown() {
             local TZ_NAME="$1"
@@ -247,31 +270,8 @@ jobs:
             fi
           }
 
-          check_prayer_notify() {
-            local TZ_NAME="$1"
-            local CITY="$2"
-            local F="$3"; local D="$4"; local A="$5"; local M="$6"; local I="$7"
-            local NOW=$(date +%s)
-            local TODAY=$(TZ="$TZ_NAME" date '+%Y-%m-%d')
-
-            for p in "الفجر|$F" "الظهر|$D" "العصر|$A" "المغرب|$M" "العشاء|$I"; do
-              local AR="${p%%|*}"
-              local t="${p##*|}"
-              [ -z "$t" ] && continue
-              local PE=$(TZ="$TZ_NAME" date -d "$TODAY $t" +%s 2>/dev/null)
-              [ -z "$PE" ] && continue
-              local DIFF=$((NOW - PE))
-              if [ "$DIFF" -ge 0 ] && [ "$DIFF" -lt 180 ]; then
-                echo "حان الآن وقت صلاة $AR في $CITY" > /tmp/prayer_notify.txt
-                return
-              fi
-            done
-            echo " " > /tmp/prayer_notify.txt
-          }
-
           update_countdown "Asia/Amman" "عمّان" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/cd_amman.txt
           update_countdown "Asia/Riyadh" "مكة" "$M_F" "$M_D" "$M_A" "$M_M" "$M_I" > /tmp/cd_makkah.txt
-          check_prayer_notify "Asia/Amman" "عمّان" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I"
 
           echo "Amman: $(cat /tmp/cd_amman.txt)"
           echo "Makkah: $(cat /tmp/cd_makkah.txt)"
@@ -282,7 +282,6 @@ jobs:
             TZ='Asia/Amman' date '+%H.%M' > /tmp/c.tmp && mv /tmp/c.tmp /tmp/clock.txt
             update_countdown "Asia/Amman" "عمّان" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/cda.tmp && mv /tmp/cda.tmp /tmp/cd_amman.txt
             update_countdown "Asia/Riyadh" "مكة" "$M_F" "$M_D" "$M_A" "$M_M" "$M_I" > /tmp/cdm.tmp && mv /tmp/cdm.tmp /tmp/cd_makkah.txt
-            check_prayer_notify "Asia/Amman" "عمّان" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I"
           done) & C_PID=$!
 
           (while true; do
@@ -310,14 +309,17 @@ jobs:
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/date.txt:reload=1:expansion=none:fontsize=22:fontcolor=white:x=40:y=90:box=1:boxcolor=black@0.75:boxborderw=14"
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/hadith.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=180:box=1:boxcolor=black@0.85:boxborderw=22"
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/dhikr.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=white:x=(w-tw)/2:y=245:box=1:boxcolor=black@0.85:boxborderw=20"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cta.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=310:box=1:boxcolor=black@0.85:boxborderw=22"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/prayer_notify.txt:reload=1:expansion=none:text_shaping=1:fontsize=60:fontcolor=0xD4AF37:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.9:boxborderw=35"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_amman.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-160:box=1:boxcolor=black@0.8:boxborderw=18"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_makkah.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-115:box=1:boxcolor=black@0.8:boxborderw=18"
-          VF="$VF,drawtext=fontfile=$FONT:text='بث القرآن الكريم مباشر':expansion=none:text_shaping=1:fontsize=24:fontcolor=white:x=(w-tw)/2:y=h-70:box=1:boxcolor=black@0.75:boxborderw=16"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cta.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-240:box=1:boxcolor=black@0.85:boxborderw=22"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_amman.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-175:box=1:boxcolor=black@0.8:boxborderw=18"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_makkah.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-130:box=1:boxcolor=black@0.8:boxborderw=18"
+          VF="$VF,drawtext=fontfile=$FONT:text='بث القرآن الكريم مباشر':expansion=none:text_shaping=1:fontsize=24:fontcolor=white:x=(w-tw)/2:y=h-80:box=1:boxcolor=black@0.75:boxborderw=16"
+
+          if [ -n "$NOTIFY_ENABLE" ]; then
+            VF="$VF,drawtext=fontfile=$FONT:text='حان الآن وقت الصلاة في عمّان':expansion=none:text_shaping=1:fontsize=60:fontcolor=0xD4AF37:x=(w-tw)/2:y=400:box=1:boxcolor=black@0.9:boxborderw=35:enable='$NOTIFY_ENABLE'"
+          fi
 
           if [ "$IS_FRIDAY" = "true" ]; then
-            VF="$VF,drawtext=fontfile=$FONT:text='جمعة مباركة - يوم سورة الكهف':expansion=none:text_shaping=1:fontsize=36:fontcolor=0xD4AF37:x=(w-tw)/2:y=400:box=1:boxcolor=black@0.85:boxborderw=22"
+            VF="$VF,drawtext=fontfile=$FONT:text='جمعة مباركة - يوم سورة الكهف':expansion=none:text_shaping=1:fontsize=36:fontcolor=0xD4AF37:x=(w-tw)/2:y=560:box=1:boxcolor=black@0.85:boxborderw=22"
           fi
 
           VF="$VF,format=yuv420p"
