@@ -1,4 +1,4 @@
-name: YouTube Live Stream (Lite Edition)
+name: YouTube Live Stream (Full Arabic Edition)
 
 on:
   workflow_dispatch:
@@ -23,7 +23,20 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg fonts-noto-core fonts-dejavu jq curl
+          sudo apt-get install -y -qq ffmpeg fonts-noto-core jq curl
+
+      - name: Verify Arabic Font
+        run: |
+          FONT="/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
+          if [ ! -f "$FONT" ]; then
+            FONT=$(find /usr/share/fonts -name "NotoNaskhArabic*.ttf" 2>/dev/null | head -1)
+          fi
+          if [ -z "$FONT" ]; then
+            echo "❌ خط عربي غير موجود!"
+            ls /usr/share/fonts/truetype/noto/ | head -20
+            exit 1
+          fi
+          echo "✅ الخط العربي: $FONT"
 
       - name: Detect Day and Pick Audio
         id: day
@@ -34,12 +47,12 @@ jobs:
           DAY_NUM=$(TZ='Asia/Amman' date +%u)
           if [ "$DAY_NUM" = "5" ]; then
             echo "is_friday=true" >> $GITHUB_OUTPUT
-            echo "surah_name=Surah Al-Kahf" >> $GITHUB_OUTPUT
             echo "audio_url=$AUDIO_URL_KAHF" >> $GITHUB_OUTPUT
+            echo "surah_ar=سورة الكهف" >> $GITHUB_OUTPUT
           else
             echo "is_friday=false" >> $GITHUB_OUTPUT
-            echo "surah_name=Surah Al-Baqarah" >> $GITHUB_OUTPUT
             echo "audio_url=$AUDIO_URL_BAQARAH" >> $GITHUB_OUTPUT
+            echo "surah_ar=سورة البقرة" >> $GITHUB_OUTPUT
           fi
 
       - name: Download Audio
@@ -62,37 +75,35 @@ jobs:
         run: |
           RESP=$(curl -s --max-time 20 "https://api.aladhan.com/v1/timingsByCity?city=Amman&country=Jordan&method=23" || echo "")
           if echo "$RESP" | grep -q '"Fajr"'; then
-            FAJR=$(echo "$RESP" | jq -r '.data.timings.Fajr' | cut -d' ' -f1 | tr ':' '.')
-            DHUHR=$(echo "$RESP" | jq -r '.data.timings.Dhuhr' | cut -d' ' -f1 | tr ':' '.')
-            ASR=$(echo "$RESP" | jq -r '.data.timings.Asr' | cut -d' ' -f1 | tr ':' '.')
-            MAGHRIB=$(echo "$RESP" | jq -r '.data.timings.Maghrib' | cut -d' ' -f1 | tr ':' '.')
-            ISHA=$(echo "$RESP" | jq -r '.data.timings.Isha' | cut -d' ' -f1 | tr ':' '.')
+            A_F=$(echo "$RESP" | jq -r '.data.timings.Fajr' | cut -d' ' -f1)
+            A_D=$(echo "$RESP" | jq -r '.data.timings.Dhuhr' | cut -d' ' -f1)
+            A_A=$(echo "$RESP" | jq -r '.data.timings.Asr' | cut -d' ' -f1)
+            A_M=$(echo "$RESP" | jq -r '.data.timings.Maghrib' | cut -d' ' -f1)
+            A_I=$(echo "$RESP" | jq -r '.data.timings.Isha' | cut -d' ' -f1)
           else
-            FAJR="05.15"; DHUHR="12.30"; ASR="15.45"; MAGHRIB="18.30"; ISHA="19.55"
+            A_F="05:15"; A_D="12:30"; A_A="15:45"; A_M="18:30"; A_I="19:55"
           fi
-          echo "prayer_main=Amman  Fajr $FAJR  Dhuhr $DHUHR  Asr $ASR  Maghrib $MAGHRIB  Isha $ISHA" >> $GITHUB_OUTPUT
-          echo "amman_fajr=$(echo $FAJR | tr '.' ':')" >> $GITHUB_OUTPUT
-          echo "amman_dhuhr=$(echo $DHUHR | tr '.' ':')" >> $GITHUB_OUTPUT
-          echo "amman_asr=$(echo $ASR | tr '.' ':')" >> $GITHUB_OUTPUT
-          echo "amman_maghrib=$(echo $MAGHRIB | tr '.' ':')" >> $GITHUB_OUTPUT
-          echo "amman_isha=$(echo $ISHA | tr '.' ':')" >> $GITHUB_OUTPUT
+          echo "amman_fajr=$A_F" >> $GITHUB_OUTPUT
+          echo "amman_dhuhr=$A_D" >> $GITHUB_OUTPUT
+          echo "amman_asr=$A_A" >> $GITHUB_OUTPUT
+          echo "amman_maghrib=$A_M" >> $GITHUB_OUTPUT
+          echo "amman_isha=$A_I" >> $GITHUB_OUTPUT
 
           RESP_M=$(curl -s --max-time 20 "https://api.aladhan.com/v1/timingsByCity?city=Makkah&country=Saudi%20Arabia&method=4" || echo "")
           if echo "$RESP_M" | grep -q '"Fajr"'; then
-            M_FAJR=$(echo "$RESP_M" | jq -r '.data.timings.Fajr' | cut -d' ' -f1)
-            M_DHUHR=$(echo "$RESP_M" | jq -r '.data.timings.Dhuhr' | cut -d' ' -f1)
-            M_ASR=$(echo "$RESP_M" | jq -r '.data.timings.Asr' | cut -d' ' -f1)
-            M_MAGHRIB=$(echo "$RESP_M" | jq -r '.data.timings.Maghrib' | cut -d' ' -f1)
-            M_ISHA=$(echo "$RESP_M" | jq -r '.data.timings.Isha' | cut -d' ' -f1)
+            M_F=$(echo "$RESP_M" | jq -r '.data.timings.Fajr' | cut -d' ' -f1)
+            M_D=$(echo "$RESP_M" | jq -r '.data.timings.Dhuhr' | cut -d' ' -f1)
+            M_A=$(echo "$RESP_M" | jq -r '.data.timings.Asr' | cut -d' ' -f1)
+            M_M=$(echo "$RESP_M" | jq -r '.data.timings.Maghrib' | cut -d' ' -f1)
+            M_I=$(echo "$RESP_M" | jq -r '.data.timings.Isha' | cut -d' ' -f1)
           else
-            M_FAJR="05:00"; M_DHUHR="12:15"; M_ASR="15:30"; M_MAGHRIB="18:00"; M_ISHA="19:30"
+            M_F="05:00"; M_D="12:15"; M_A="15:30"; M_M="18:00"; M_I="19:30"
           fi
-          echo "makkah_fajr=$M_FAJR" >> $GITHUB_OUTPUT
-          echo "makkah_dhuhr=$M_DHUHR" >> $GITHUB_OUTPUT
-          echo "makkah_asr=$M_ASR" >> $GITHUB_OUTPUT
-          echo "makkah_maghrib=$M_MAGHRIB" >> $GITHUB_OUTPUT
-          echo "makkah_isha=$M_ISHA" >> $GITHUB_OUTPUT
-          echo "gregorian=$(TZ='Asia/Amman' date '+%Y/%m/%d')" >> $GITHUB_OUTPUT
+          echo "makkah_fajr=$M_F" >> $GITHUB_OUTPUT
+          echo "makkah_dhuhr=$M_D" >> $GITHUB_OUTPUT
+          echo "makkah_asr=$M_A" >> $GITHUB_OUTPUT
+          echo "makkah_maghrib=$M_M" >> $GITHUB_OUTPUT
+          echo "makkah_isha=$M_I" >> $GITHUB_OUTPUT
 
       - name: Create Image Playlist
         env:
@@ -100,10 +111,7 @@ jobs:
         run: |
           > images.txt
           if [ "$IS_FRIDAY" = "true" ]; then
-            if [ -f "normalized/20m.jpg" ]; then
-              echo "file 'normalized/20m.jpg'" >> images.txt
-              echo "duration 1200" >> images.txt
-            fi
+            [ -f "normalized/20m.jpg" ] && echo "file 'normalized/20m.jpg'" >> images.txt && echo "duration 1200" >> images.txt
             for img in $(ls normalized/cover[2-9].jpg 2>/dev/null | shuf); do
               echo "file '$img'" >> images.txt
               echo "duration 60" >> images.txt
@@ -117,39 +125,67 @@ jobs:
             done
           fi
 
-      - name: Prepare Hadith Pool
+      - name: Prepare Content Pools
+        env:
+          IS_FRIDAY: ${{ steps.day.outputs.is_friday }}
         run: |
-          cat > hadith_pool.txt << 'EOF'
-          Do not turn your homes into graves, for Satan flees from the house where Surah Al-Baqarah is recited
-          Recite Surah Al-Baqarah, for taking it is a blessing and leaving it is a regret
-          Whoever recites the last two verses of Surah Al-Baqarah at night, they will suffice him
-          Ayat Al-Kursi is the greatest verse in the Book of Allah
-          For everything there is a peak, and the peak of the Quran is Surah Al-Baqarah
-          The best of you are those who learn the Quran and teach it
-          Recite the Quran, for it will come on the Day of Judgment as an intercessor
-          The one who is proficient in the Quran will be with the noble, righteous scribes
-          Whoever reads a letter from the Book of Allah will have a reward multiplied by ten
-          Verily, this Quran guides to that which is most suitable
-          EOF
+          if [ "$IS_FRIDAY" = "true" ]; then
+            cat > hadith_pool.txt << 'EOF'
+من قرأ سورة الكهف يوم الجمعة أضاء له من النور ما بين الجمعتين
+من قرأ سورة الكهف يوم الجمعة أضاء له من النور ما بينه وبين البيت العتيق
+من قرأ سورة الكهف في يوم الجمعة عصم من فتنة الدجال
+الجمعة سيد الأيام وسورة الكهف تاجها
+من قرأ سورة الكهف يوم الجمعة كان له نوراً يوم القيامة
+أكثروا من الصلاة عليّ يوم الجمعة فإنها معروضة عليّ
+إن في الجمعة ساعة لا يوافقها مسلم يسأل الله فيها خيراً إلا أعطاه
+خير يوم طلعت عليه الشمس يوم الجمعة
+من اغتسل يوم الجمعة ومسّ من طيب ولبس أحسن ثيابه ثم أتى المسجد غُفر له ما بينه وبين الجمعة الأخرى
+يَا أَيُّهَا الَّذِينَ آمَنُوا إِذَا نُودِيَ لِلصَّلَاةِ مِن يَوْمِ الْجُمُعَةِ فَاسْعَوْا إِلَىٰ ذِكْرِ اللَّهِ
+EOF
+          else
+            cat > hadith_pool.txt << 'EOF'
+لا تجعلوا بيوتكم مقابر، إن الشيطان ينفر من البيت الذي تُقرأ فيه سورة البقرة
+اقرؤوا سورة البقرة، فإن أخذها بركة، وتركها حسرة، ولا تستطيعها البطلة
+من قرأ الآيتين الأخيرتين من سورة البقرة في ليلة كفتاه
+آية الكرسي أعظم آية في كتاب الله، وهي في سورة البقرة
+إن لكل شيء سناماً، وإن سنام القرآن سورة البقرة
+خيركم من تعلم القرآن وعلمه
+اقرؤوا القرآن، فإنه يأتي يوم القيامة شفيعاً لأصحابه
+الماهر بالقرآن مع السفرة الكرام البررة
+من قرأ حرفاً من كتاب الله فله به حسنة، والحسنة بعشر أمثالها
+إِنَّ هَذَا الْقُرْآنَ يَهْدِي لِلَّتِي هِيَ أَقْوَمُ
+EOF
+          fi
+
+          cat > adhkar_pool.txt << 'EOF'
+سبحان الله وبحمده، سبحان الله العظيم
+لا إله إلا الله وحده لا شريك له
+الحمد لله رب العالمين
+الله أكبر كبيراً، والحمد لله كثيراً
+لا حول ولا قوة إلا بالله
+أستغفر الله العظيم وأتوب إليه
+اللهم صلِّ وسلم على نبينا محمد
+حسبي الله ونعم الوكيل
+لا إله إلا الله، عدد خلقه، ورضا نفسه، وزنة عرشه، ومداد كلماته
+اللهم إني أسألك الجنة وأعوذ بك من النار
+EOF
 
       - name: Stream to YouTube
         env:
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
           TZ: 'Asia/Amman'
-          PRAYER_MAIN: ${{ steps.data.outputs.prayer_main }}
-          GREGORIAN: ${{ steps.data.outputs.gregorian }}
-          SURAH: ${{ steps.day.outputs.surah_name }}
           IS_FRIDAY: ${{ steps.day.outputs.is_friday }}
-          AMMAN_FAJR: ${{ steps.data.outputs.amman_fajr }}
-          AMMAN_DHUHR: ${{ steps.data.outputs.amman_dhuhr }}
-          AMMAN_ASR: ${{ steps.data.outputs.amman_asr }}
-          AMMAN_MAGHRIB: ${{ steps.data.outputs.amman_maghrib }}
-          AMMAN_ISHA: ${{ steps.data.outputs.amman_isha }}
-          MAKKAH_FAJR: ${{ steps.data.outputs.makkah_fajr }}
-          MAKKAH_DHUHR: ${{ steps.data.outputs.makkah_dhuhr }}
-          MAKKAH_ASR: ${{ steps.data.outputs.makkah_asr }}
-          MAKKAH_MAGHRIB: ${{ steps.data.outputs.makkah_maghrib }}
-          MAKKAH_ISHA: ${{ steps.data.outputs.makkah_isha }}
+          SURAH_AR: ${{ steps.day.outputs.surah_ar }}
+          A_F: ${{ steps.data.outputs.amman_fajr }}
+          A_D: ${{ steps.data.outputs.amman_dhuhr }}
+          A_A: ${{ steps.data.outputs.amman_asr }}
+          A_M: ${{ steps.data.outputs.amman_maghrib }}
+          A_I: ${{ steps.data.outputs.amman_isha }}
+          M_F: ${{ steps.data.outputs.makkah_fajr }}
+          M_D: ${{ steps.data.outputs.makkah_dhuhr }}
+          M_A: ${{ steps.data.outputs.makkah_asr }}
+          M_M: ${{ steps.data.outputs.makkah_maghrib }}
+          M_I: ${{ steps.data.outputs.makkah_isha }}
         run: |
           if [ -z "$YOUTUBE_STREAM_KEY" ]; then
             echo "Stream key missing"
@@ -157,22 +193,35 @@ jobs:
           fi
 
           RTMP_URL="rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
-          FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-          [ ! -f "$FONT" ] && FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
+          FONT="/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
+          [ ! -f "$FONT" ] && FONT=$(find /usr/share/fonts -name "NotoNaskhArabic*.ttf" 2>/dev/null | head -1)
+          [ -z "$FONT" ] && FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+          echo "Font: $FONT"
+
+          # ====== إنشاء الملفات الأولية ======
           TZ='Asia/Amman' date '+%H.%M' > /tmp/clock.txt
+          echo "$SURAH_AR" > /tmp/surah_ar.txt
           shuf -n 1 hadith_pool.txt > /tmp/hadith.txt
+          shuf -n 1 adhkar_pool.txt > /tmp/dhikr.txt
+          echo " " > /tmp/prayer_notify.txt
 
+          # قائمة مواقيت عمّان (عربي)
+          printf "عمّان  الفجر %s  الظهر %s  العصر %s  المغرب %s  العشاء %s" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/amman_line.txt
+          echo "2026-$(TZ='Asia/Amman' date '+%m-%d')" > /tmp/date.txt
+
+          # ====== دالة العد التنازلي ======
           update_countdown() {
             local TZ_NAME="$1"
-            local F="$2"; local D="$3"; local A="$4"; local M="$5"; local I="$6"
+            local CITY="$2"
+            local F="$3"; local D="$4"; local A="$5"; local M="$6"; local I="$7"
             local NOW=$(date +%s)
             local TODAY=$(TZ="$TZ_NAME" date '+%Y-%m-%d')
-            local BEST_NAME=""; local BEST_OFF=999999
+            local BEST_AR=""; local BEST_OFF=999999
 
-            for p in "Fajr:$F" "Dhuhr:$D" "Asr:$A" "Maghrib:$M" "Isha:$I"; do
-              local nm="${p%%:*}"
-              local t="${p##*:}"
+            for p in "الفجر|$F" "الظهر|$D" "العصر|$A" "المغرب|$M" "العشاء|$I"; do
+              local AR="${p%%|*}"
+              local t="${p##*|}"
               [ -z "$t" ] && continue
               local PE=$(TZ="$TZ_NAME" date -d "$TODAY $t" +%s 2>/dev/null)
               [ -z "$PE" ] && continue
@@ -180,55 +229,118 @@ jobs:
               local OFF=$((PE - NOW))
               if [ "$OFF" -lt "$BEST_OFF" ]; then
                 BEST_OFF=$OFF
-                BEST_NAME="$nm"
+                BEST_AR="$AR"
               fi
             done
 
             local HH=$((BEST_OFF / 3600))
             local MM=$(((BEST_OFF % 3600) / 60))
             if [ "$HH" -gt 0 ]; then
-              printf "%s in %dh %dm" "$BEST_NAME" "$HH" "$MM"
+              printf "%s: %s بعد %d س و %d د" "$CITY" "$BEST_AR" "$HH" "$MM"
             else
-              printf "%s in %dm" "$BEST_NAME" "$MM"
+              printf "%s: %s بعد %d دقيقة" "$CITY" "$BEST_AR" "$MM"
             fi
           }
 
-          update_countdown "Asia/Amman" "$AMMAN_FAJR" "$AMMAN_DHUHR" "$AMMAN_ASR" "$AMMAN_MAGHRIB" "$AMMAN_ISHA" > /tmp/cd_amman.txt
-          update_countdown "Asia/Riyadh" "$MAKKAH_FAJR" "$MAKKAH_DHUHR" "$MAKKAH_ASR" "$MAKKAH_MAGHRIB" "$MAKKAH_ISHA" > /tmp/cd_makkah.txt
+          # ====== دالة إشعار دخول وقت الصلاة ======
+          check_prayer_notify() {
+            local TZ_NAME="$1"
+            local CITY="$2"
+            local F="$3"; local D="$4"; local A="$5"; local M="$6"; local I="$7"
+            local NOW=$(date +%s)
+            local TODAY=$(TZ="$TZ_NAME" date '+%Y-%m-%d')
 
-          echo "Amman countdown: $(cat /tmp/cd_amman.txt)"
-          echo "Makkah countdown: $(cat /tmp/cd_makkah.txt)"
-          echo "Hadith: $(cat /tmp/hadith.txt)"
+            for p in "الفجر|$F" "الظهر|$D" "العصر|$A" "المغرب|$M" "العشاء|$I"; do
+              local AR="${p%%|*}"
+              local t="${p##*|}"
+              [ -z "$t" ] && continue
+              local PE=$(TZ="$TZ_NAME" date -d "$TODAY $t" +%s 2>/dev/null)
+              [ -z "$PE" ] && continue
+              local DIFF=$((NOW - PE))
+              if [ "$DIFF" -ge 0 ] && [ "$DIFF" -lt 180 ]; then
+                echo "حان الآن وقت صلاة $AR في $CITY" > /tmp/prayer_notify.txt
+                return
+              fi
+            done
+            echo " " > /tmp/prayer_notify.txt
+          }
 
+          # الحساب الأولي
+          update_countdown "Asia/Amman" "عمّان" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/cd_amman.txt
+          update_countdown "Asia/Riyadh" "مكة" "$M_F" "$M_D" "$M_A" "$M_M" "$M_I" > /tmp/cd_makkah.txt
+          check_prayer_notify "Asia/Amman" "عمّان" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I"
+
+          echo "عمّان: $(cat /tmp/cd_amman.txt)"
+          echo "مكة: $(cat /tmp/cd_makkah.txt)"
+          echo "حديث: $(cat /tmp/hadith.txt)"
+          echo "ذكر: $(cat /tmp/dhikr.txt)"
+
+          # ====== العمليات الخلفية ======
+          # الساعة + العد التنازلي + إشعار الصلاة — كل 60 ثانية
           (while true; do
             sleep 60
             TZ='Asia/Amman' date '+%H.%M' > /tmp/c.tmp && mv /tmp/c.tmp /tmp/clock.txt
-            update_countdown "Asia/Amman" "$AMMAN_FAJR" "$AMMAN_DHUHR" "$AMMAN_ASR" "$AMMAN_MAGHRIB" "$AMMAN_ISHA" > /tmp/cda.tmp && mv /tmp/cda.tmp /tmp/cd_amman.txt
-            update_countdown "Asia/Riyadh" "$MAKKAH_FAJR" "$MAKKAH_DHUHR" "$MAKKAH_ASR" "$MAKKAH_MAGHRIB" "$MAKKAH_ISHA" > /tmp/cdm.tmp && mv /tmp/cdm.tmp /tmp/cd_makkah.txt
+            update_countdown "Asia/Amman" "عمّان" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/cda.tmp && mv /tmp/cda.tmp /tmp/cd_amman.txt
+            update_countdown "Asia/Riyadh" "مكة" "$M_F" "$M_D" "$M_A" "$M_M" "$M_I" > /tmp/cdm.tmp && mv /tmp/cdm.tmp /tmp/cd_makkah.txt
+            check_prayer_notify "Asia/Amman" "عمّان" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I"
           done) & C_PID=$!
 
+          # الحديث — كل 5 دقائق
           (while true; do
             sleep 300
             shuf -n 1 hadith_pool.txt > /tmp/h.tmp && mv /tmp/h.tmp /tmp/hadith.txt
           done) & H_PID=$!
 
-          trap "kill $C_PID $H_PID 2>/dev/null || true" EXIT INT TERM
+          # الذكر — كل 3 دقائق
+          (while true; do
+            sleep 180
+            shuf -n 1 adhkar_pool.txt > /tmp/d.tmp && mv /tmp/d.tmp /tmp/dhikr.txt
+          done) & D_PID=$!
 
+          trap "kill $C_PID $H_PID $D_PID 2>/dev/null || true" EXIT INT TERM
+
+          # ====== بناء الفلاتر ======
           VF="fps=25,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/clock.txt:reload=1:expansion=none:fontsize=52:fontcolor=white:x=w-tw-40:y=40:box=1:boxcolor=black@0.6:boxborderw=14"
-          VF="$VF,drawtext=fontfile=$FONT:text='$PRAYER_MAIN':fontsize=22:fontcolor=gold:x=40:y=40:box=1:boxcolor=black@0.6:boxborderw=10"
-          VF="$VF,drawtext=fontfile=$FONT:text='$GREGORIAN':fontsize=22:fontcolor=white:x=40:y=90:box=1:boxcolor=black@0.6:boxborderw=10"
-          VF="$VF,drawtext=fontfile=$FONT:text='$SURAH':fontsize=28:fontcolor=gold:x=w-tw-40:y=110:box=1:boxcolor=black@0.6:boxborderw=12"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/hadith.txt:reload=1:expansion=none:fontsize=22:fontcolor=white:x=(w-tw)/2:y=230:box=1:boxcolor=darkgreen@0.8:boxborderw=16"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_amman.txt:reload=1:expansion=none:fontsize=26:fontcolor=yellow:x=(w-tw)/2:y=h-170:box=1:boxcolor=black@0.7:boxborderw=12"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_makkah.txt:reload=1:expansion=none:fontsize=26:fontcolor=lightgreen:x=(w-tw)/2:y=h-130:box=1:boxcolor=black@0.7:boxborderw=12"
-          VF="$VF,drawtext=fontfile=$FONT:text='Live Quran Stream':fontsize=24:fontcolor=white:x=(w-tw)/2:y=h-80:box=1:boxcolor=black@0.6:boxborderw=12"
 
+          # 1. الساعة (أعلى يمين)
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/clock.txt:reload=1:expansion=none:fontsize=52:fontcolor=white:x=w-tw-40:y=40:box=1:boxcolor=black@0.65:boxborderw=14"
+
+          # 2. مواقيت عمّان (أعلى يسار)
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/amman_line.txt:expansion=none:text_shaping=1:fontsize=22:fontcolor=gold:x=40:y=40:box=1:boxcolor=black@0.65:boxborderw=10"
+
+          # 3. التاريخ (أعلى يسار تحت المواقيت)
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/date.txt:reload=1:expansion=none:fontsize=22:fontcolor=white:x=40:y=90:box=1:boxcolor=black@0.65:boxborderw=10"
+
+          # 4. اسم السورة (أعلى يمين تحت الساعة)
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/surah_ar.txt:reload=1:expansion=none:text_shaping=1:fontsize=32:fontcolor=gold:x=w-tw-40:y=110:box=1:boxcolor=black@0.65:boxborderw=14"
+
+          # 5. شريط الحديث (وسط أعلى - أخضر)
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/hadith.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=white:x=(w-tw)/2:y=180:box=1:boxcolor=darkgreen@0.85:boxborderw=18"
+
+          # 6. شريط الذكر (وسط أعلى - أزرق)
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/dhikr.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=white:x=(w-tw)/2:y=240:box=1:boxcolor=navy@0.85:boxborderw=16"
+
+          # 7. إشعار دخول وقت الصلاة (وسط الشاشة - كبير)
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/prayer_notify.txt:reload=1:expansion=none:text_shaping=1:fontsize=60:fontcolor=gold:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.9:boxborderw=30"
+
+          # 8. العد التنازلي عمّان (أسفل وسط)
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_amman.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=yellow:x=(w-tw)/2:y=h-180:box=1:boxcolor=black@0.75:boxborderw=14"
+
+          # 9. العد التنازلي مكة (أسفل وسط)
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_makkah.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=lightgreen:x=(w-tw)/2:y=h-135:box=1:boxcolor=black@0.75:boxborderw=14"
+
+          # 10. شعار القناة (أسفل وسط)
+          VF="$VF,drawtext=fontfile=$FONT:text='بث القرآن الكريم مباشر':expansion=none:text_shaping=1:fontsize=24:fontcolor=white:x=(w-tw)/2:y=h-85:box=1:boxcolor=black@0.65:boxborderw=12"
+
+          # 11. تحية الجمعة
           if [ "$IS_FRIDAY" = "true" ]; then
-            VF="$VF,drawtext=fontfile=$FONT:text='Jumua Mubaraka':fontsize=34:fontcolor=gold:x=(w-tw)/2:y=200:box=1:boxcolor=black@0.7:boxborderw=16"
+            VF="$VF,drawtext=fontfile=$FONT:text='جمعة مباركة - يوم سورة الكهف':expansion=none:text_shaping=1:fontsize=36:fontcolor=gold:x=(w-tw)/2:y=320:box=1:boxcolor=black@0.8:boxborderw=18"
           fi
 
-          echo "Starting stream with live Hadith ticker..."
+          VF="$VF,format=yuv420p"
+
+          echo "بدء البث مع الشريط العربي الكامل..."
+          echo "عدد الفلاتر: $(echo "$VF" | grep -o 'drawtext' | wc -l)"
 
           timeout 21300 ffmpeg \
             -stream_loop -1 -f concat -safe 0 -i images.txt \
@@ -238,6 +350,6 @@ jobs:
             -c:v libx264 -preset veryfast -tune stillimage \
             -b:v 1500k -maxrate 1500k -bufsize 3000k -g 50 \
             -c:a aac -b:a 192k -ar 44100 \
-            -f flv "$RTMP_URL" || echo "Stream stopped"
+            -f flv "$RTMP_URL" || echo "تم إيقاف البث"
 
-          kill $C_PID $H_PID 2>/dev/null || true
+          kill $C_PID $H_PID $D_PID 2>/dev/null || true
