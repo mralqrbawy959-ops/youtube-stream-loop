@@ -115,8 +115,7 @@ jobs:
           [ ! -f "$FONT" ] && FONT="/usr/share/fonts/opentype/noto/NotoNaskhArabic-Regular.ttf"
           [ ! -f "$FONT" ] && FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
-          # بناء سلسلة الفلاتر - بسيطة وثابتة (بدون reload أو zoompan)
-          VF="scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
+          VF="fps=25,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
           VF="$VF,drawtext=fontfile=$FONT:text='$PRAYER_MAIN':fontsize=22:fontcolor=gold:x=40:y=40:box=1:boxcolor=black@0.6:boxborderw=10"
           VF="$VF,drawtext=fontfile=$FONT:text='$GREGORIAN':fontsize=22:fontcolor=white:x=40:y=90:box=1:boxcolor=black@0.6:boxborderw=10"
           VF="$VF,drawtext=fontfile=$FONT:text='$SURAH':fontsize=28:fontcolor=gold:x=w-tw-40:y=40:box=1:boxcolor=black@0.6:boxborderw=12"
@@ -127,12 +126,12 @@ jobs:
           fi
 
           echo "Starting stream..."
-          echo "Active filters: $(echo "$VF" | grep -o 'drawtext' | wc -l)"
 
           timeout 21300 ffmpeg \
-            -re -stream_loop -1 -f concat -safe 0 -i images.txt \
+            -stream_loop -1 -f concat -safe 0 -i images.txt \
             -re -stream_loop -1 -i audio.mp3 \
             -vf "$VF" \
+            -r 25 \
             -c:v libx264 -preset veryfast -tune stillimage \
             -b:v 1500k -maxrate 1500k -bufsize 3000k -g 50 \
             -c:a aac -b:a 192k -ar 44100 \
