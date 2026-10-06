@@ -117,6 +117,21 @@ jobs:
             done
           fi
 
+      - name: Prepare Hadith Pool
+        run: |
+          cat > hadith_pool.txt << 'EOF'
+          Do not turn your homes into graves, for Satan flees from the house where Surah Al-Baqarah is recited
+          Recite Surah Al-Baqarah, for taking it is a blessing and leaving it is a regret
+          Whoever recites the last two verses of Surah Al-Baqarah at night, they will suffice him
+          Ayat Al-Kursi is the greatest verse in the Book of Allah
+          For everything there is a peak, and the peak of the Quran is Surah Al-Baqarah
+          The best of you are those who learn the Quran and teach it
+          Recite the Quran, for it will come on the Day of Judgment as an intercessor
+          The one who is proficient in the Quran will be with the noble, righteous scribes
+          Whoever reads a letter from the Book of Allah will have a reward multiplied by ten
+          Verily, this Quran guides to that which is most suitable
+          EOF
+
       - name: Stream to YouTube
         env:
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
@@ -146,32 +161,32 @@ jobs:
           [ ! -f "$FONT" ] && FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
           TZ='Asia/Amman' date '+%H.%M' > /tmp/clock.txt
+          shuf -n 1 hadith_pool.txt > /tmp/hadith.txt
 
           update_countdown() {
             local TZ_NAME="$1"
-            local F="$2"
-            local D="$3"
-            local A="$4"
-            local M="$5"
-            local I="$6"
-            local NOW=$(TZ="$TZ_NAME" date +%s)
-            local BEST_NAME=""
-            local BEST_OFF=999999
+            local F="$2"; local D="$3"; local A="$4"; local M="$5"; local I="$6"
+            local NOW=$(date +%s)
+            local TODAY=$(TZ="$TZ_NAME" date '+%Y-%m-%d')
+            local BEST_NAME=""; local BEST_OFF=999999
+
             for p in "Fajr:$F" "Dhuhr:$D" "Asr:$A" "Maghrib:$M" "Isha:$I"; do
               local nm="${p%%:*}"
               local t="${p##*:}"
               [ -z "$t" ] && continue
-              local PE=$(TZ="$TZ_NAME" date -d "today $t" +%s 2>/dev/null || echo "$NOW")
-              [ $PE -lt $NOW ] && PE=$((PE + 86400))
+              local PE=$(TZ="$TZ_NAME" date -d "$TODAY $t" +%s 2>/dev/null)
+              [ -z "$PE" ] && continue
+              [ "$PE" -lt "$NOW" ] && PE=$((PE + 86400))
               local OFF=$((PE - NOW))
-              if [ $OFF -lt $BEST_OFF ]; then
+              if [ "$OFF" -lt "$BEST_OFF" ]; then
                 BEST_OFF=$OFF
                 BEST_NAME="$nm"
               fi
             done
+
             local HH=$((BEST_OFF / 3600))
             local MM=$(((BEST_OFF % 3600) / 60))
-            if [ $HH -gt 0 ]; then
+            if [ "$HH" -gt 0 ]; then
               printf "%s in %dh %dm" "$BEST_NAME" "$HH" "$MM"
             else
               printf "%s in %dm" "$BEST_NAME" "$MM"
@@ -183,6 +198,7 @@ jobs:
 
           echo "Amman countdown: $(cat /tmp/cd_amman.txt)"
           echo "Makkah countdown: $(cat /tmp/cd_makkah.txt)"
+          echo "Hadith: $(cat /tmp/hadith.txt)"
 
           (while true; do
             sleep 60
@@ -190,13 +206,20 @@ jobs:
             update_countdown "Asia/Amman" "$AMMAN_FAJR" "$AMMAN_DHUHR" "$AMMAN_ASR" "$AMMAN_MAGHRIB" "$AMMAN_ISHA" > /tmp/cda.tmp && mv /tmp/cda.tmp /tmp/cd_amman.txt
             update_countdown "Asia/Riyadh" "$MAKKAH_FAJR" "$MAKKAH_DHUHR" "$MAKKAH_ASR" "$MAKKAH_MAGHRIB" "$MAKKAH_ISHA" > /tmp/cdm.tmp && mv /tmp/cdm.tmp /tmp/cd_makkah.txt
           done) & C_PID=$!
-          trap "kill $C_PID 2>/dev/null || true" EXIT INT TERM
+
+          (while true; do
+            sleep 300
+            shuf -n 1 hadith_pool.txt > /tmp/h.tmp && mv /tmp/h.tmp /tmp/hadith.txt
+          done) & H_PID=$!
+
+          trap "kill $C_PID $H_PID 2>/dev/null || true" EXIT INT TERM
 
           VF="fps=25,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/clock.txt:reload=1:expansion=none:fontsize=52:fontcolor=white:x=w-tw-40:y=40:box=1:boxcolor=black@0.6:boxborderw=14"
           VF="$VF,drawtext=fontfile=$FONT:text='$PRAYER_MAIN':fontsize=22:fontcolor=gold:x=40:y=40:box=1:boxcolor=black@0.6:boxborderw=10"
           VF="$VF,drawtext=fontfile=$FONT:text='$GREGORIAN':fontsize=22:fontcolor=white:x=40:y=90:box=1:boxcolor=black@0.6:boxborderw=10"
           VF="$VF,drawtext=fontfile=$FONT:text='$SURAH':fontsize=28:fontcolor=gold:x=w-tw-40:y=110:box=1:boxcolor=black@0.6:boxborderw=12"
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/hadith.txt:reload=1:expansion=none:fontsize=22:fontcolor=white:x=(w-tw)/2:y=230:box=1:boxcolor=darkgreen@0.8:boxborderw=16"
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_amman.txt:reload=1:expansion=none:fontsize=26:fontcolor=yellow:x=(w-tw)/2:y=h-170:box=1:boxcolor=black@0.7:boxborderw=12"
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_makkah.txt:reload=1:expansion=none:fontsize=26:fontcolor=lightgreen:x=(w-tw)/2:y=h-130:box=1:boxcolor=black@0.7:boxborderw=12"
           VF="$VF,drawtext=fontfile=$FONT:text='Live Quran Stream':fontsize=24:fontcolor=white:x=(w-tw)/2:y=h-80:box=1:boxcolor=black@0.6:boxborderw=12"
@@ -205,7 +228,7 @@ jobs:
             VF="$VF,drawtext=fontfile=$FONT:text='Jumua Mubaraka':fontsize=34:fontcolor=gold:x=(w-tw)/2:y=200:box=1:boxcolor=black@0.7:boxborderw=16"
           fi
 
-          echo "Starting stream with 2 countdowns..."
+          echo "Starting stream with live Hadith ticker..."
 
           timeout 21300 ffmpeg \
             -stream_loop -1 -f concat -safe 0 -i images.txt \
@@ -217,4 +240,4 @@ jobs:
             -c:a aac -b:a 192k -ar 44100 \
             -f flv "$RTMP_URL" || echo "Stream stopped"
 
-          kill $C_PID 2>/dev/null || true
+          kill $C_PID $H_PID 2>/dev/null || true
