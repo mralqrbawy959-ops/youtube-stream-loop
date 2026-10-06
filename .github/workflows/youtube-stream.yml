@@ -1,11 +1,10 @@
 name: YouTube Live Stream
 
 on:
-  # التشغيل اليدوي من واجهة GitHub
   workflow_dispatch:
     inputs:
       video_url:
-        description: 'رابط الفيديو المراد بثه (يدعم الروابط المباشرة و yt-dlp)'
+        description: 'رابط الفيديو المراد بثه'
         required: true
         default: 'https://example.com/video.mp4'
       duration:
@@ -13,15 +12,10 @@ on:
         required: false
         default: ''
 
-# منع تشغيل أكثر من بث في نفس الوقت
-concurrency:
-  group: youtube-live
-  cancel-in-progress: false
-
 jobs:
   stream:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # 6 ساعات كحد أقصى (يمكن تعديله)
+    timeout-minutes: 360
 
     steps:
       - name: Checkout repository
@@ -31,16 +25,16 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
-          # تثبيت yt-dlp لدعم روابط يوتيوب وغيرها
           sudo wget -q https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
 
+      # 👇 هذا هو الجزء الذي كنت تحاول إصلاحه، لاحظ المسافات البادئة
       - name: Download video
         env:
-          VIDEO_URL: ${{ github.event.inputs.video_url }}
+          VIDEO_URL: "${{ github.event.inputs.video_url }}"
         run: |
           echo "⬇️ جاري سحب الفيديو من: $VIDEO_URL"
-          yt-dlp -f "best[ext=mp4]/best" -o /tmp/stream_video.mp4 "$VIDEO_URL"
+          yt-dlp --extractor-args "youtube:player_client=mweb" -f "best[ext=mp4]/best" -o /tmp/stream_video.mp4 "$VIDEO_URL"
           ls -lh /tmp/stream_video.mp4
 
       - name: Stream to YouTube
@@ -56,7 +50,6 @@ jobs:
           RTMP_URL="rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
           echo "🎥 بدء البث إلى يوتيوب..."
 
-          # بناء أمر FFmpeg
           CMD="ffmpeg -re -i /tmp/stream_video.mp4 \
             -c:v libx264 -preset veryfast -tune zerolatency \
             -b:v 3000k -maxrate 3000k -bufsize 6000k \
@@ -64,18 +57,8 @@ jobs:
             -c:a aac -b:a 128k -ar 44100 \
             -f flv \"$RTMP_URL\""
 
-          # إضافة مدة محددة إن وُجدت
           if [ -n "$DURATION" ]; then
             CMD="timeout $DURATION $CMD"
           fi
 
           eval $CMD
-
-      - name: Upload stream log (اختياري)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: stream-log
-          path: /tmp/stream_video.mp4
-          retention-days: 1
-          if-no-files-found: ignore
