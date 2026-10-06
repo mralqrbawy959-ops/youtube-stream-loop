@@ -1,46 +1,35 @@
-name: YouTube Live Stream
+name: YouTube Live Stream (Audio + Image Loop - 6 Hours)
 
 on:
+  # التشغيل اليدوي
   workflow_dispatch:
-    inputs:
-      video_url:
-        description: 'رابط الفيديو المراد بثه'
-        required: true
-        default: 'https://example.com/video.mp4'
-      duration:
-        description: 'مدة البث بالثواني (اتركه فارغاً للبث الكامل)'
-        required: false
-        default: ''
+  # (اختياري) يمكنك إلغاء التعليق عن السطرين التاليين لتشغيله تلقائياً كل يوم الساعة 8 صباحاً بتوقيت UTC
+  # schedule:
+  #   - cron: '0 8 * * *'
 
 jobs:
   stream:
     runs-on: ubuntu-latest
+    # الحد الأقصى المسموح به في GitHub هو 360 دقيقة (6 ساعات)
     timeout-minutes: 360
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install FFmpeg and yt-dlp
+      - name: Install FFmpeg
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
-          sudo wget -q https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
-          sudo chmod a+rx /usr/local/bin/yt-dlp
 
-      # 👇 هذا هو الجزء الذي كنت تحاول إصلاحه، لاحظ المسافات البادئة
-      - name: Download video
-        env:
-          VIDEO_URL: "${{ github.event.inputs.video_url }}"
+      - name: Verify files exist
         run: |
-          echo "⬇️ جاري سحب الفيديو من: $VIDEO_URL"
-          yt-dlp --extractor-args "youtube:player_client=mweb" -f "best[ext=mp4]/best" -o /tmp/stream_video.mp4 "$VIDEO_URL"
-          ls -lh /tmp/stream_video.mp4
+          echo "🔍 التحقق من وجود الملفات..."
+          ls -lh cover.jpg audio.mp3 || (echo "❌ خطأ: تأكد من رفع cover.jpg و audio.mp3 في المجلد الرئيسي" && exit 1)
 
       - name: Stream to YouTube
         env:
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
-          DURATION: ${{ github.event.inputs.duration }}
         run: |
           if [ -z "$YOUTUBE_STREAM_KEY" ]; then
             echo "❌ خطأ: لم يتم تعيين مفتاح البث (YOUTUBE_STREAM_KEY) في Secrets"
@@ -48,17 +37,17 @@ jobs:
           fi
 
           RTMP_URL="rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_STREAM_KEY"
-          echo "🎥 بدء البث إلى يوتيوب..."
+          echo "🎥 بدء دمج الصورة مع الصوت وبثهما بشكل مستمر..."
 
-          CMD="ffmpeg -re -i /tmp/stream_video.mp4 \
-            -c:v libx264 -preset veryfast -tune zerolatency \
-            -b:v 3000k -maxrate 3000k -bufsize 6000k \
-            -pix_fmt yuv420p -g 50 \
-            -c:a aac -b:a 128k -ar 44100 \
-            -f flv \"$RTMP_URL\""
-
-          if [ -n "$DURATION" ]; then
-            CMD="timeout $DURATION $CMD"
-          fi
-
-          eval $CMD
+          # timeout 21300 = 5 ساعات و 55 دقيقة (لإيقاف البث بأمان قبل حد GitHub)
+          # -loop 1 : تكرار الصورة
+          # -stream_loop -1 : تكرار الصوت بلا نهاية
+          # -tune stillimage : تحسين المعالجة للصور الثابتة
+          # scale=1920:1080 : ضبط أبعاد الصورة لتناسب يوتيوب
+          timeout 21300 ffmpeg -loop 1 -i cover.jpg -stream_loop -1 -i audio.mp3 \
+            -c:v libx264 -preset veryfast -tune stillimage \
+            -b:v 1500k -maxrate 1500k -bufsize 3000k \
+            -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p" \
+            -g 50 \
+            -c:a aac -b:a 192k -ar 44100 \
+            -f flv "$RTMP_URL" || echo "⏹️ تم إيقاف البث (إما بانتهاء الوقت أو يدوياً)"
