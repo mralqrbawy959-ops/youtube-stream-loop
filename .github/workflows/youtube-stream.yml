@@ -216,14 +216,16 @@ jobs:
             HAS_INFO_CARD="yes"
           fi
 
+          # ===== الملفات الديناميكية =====
           TZ='Asia/Amman' date '+%H.%M' > /tmp/clock.txt
           shuf -n 1 hadith_pool.txt > /tmp/hadith.txt
           shuf -n 1 adhkar_pool.txt > /tmp/dhikr.txt
           shuf -n 1 cta_pool.txt > /tmp/cta.txt
 
-          printf "عمّان: الفجر %s | الظهر %s | العصر %s | المغرب %s | العشاء %s" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/amman_line.txt
-          printf "التاريخ: %s" "$(TZ='Asia/Amman' date '+%Y.%m.%d')" > /tmp/date.txt
-          printf "السورة: %s" "$SURAH_AR" > /tmp/surah_ar.txt
+          AMMAN_TIME="$(TZ='Asia/Amman' date '+%Y.%m.%d')"
+          echo "التاريخ: $AMMAN_TIME" > /tmp/date.txt
+          echo "السورة: $SURAH_AR" > /tmp/surah_ar.txt
+          echo "عمّان: الفجر $A_F | الظهر $A_D | العصر $A_A | المغرب $A_M | العشاء $A_I" > /tmp/amman_line.txt
 
           STREAM_START=$(date +%s)
           TODAY_AMMAN=$(TZ='Asia/Amman' date '+%Y-%m-%d')
@@ -273,15 +275,16 @@ jobs:
             local HH=$((BEST_OFF / 3600))
             local MM=$(((BEST_OFF % 3600) / 60))
             if [ "$HH" -gt 0 ]; then
-              printf "%s %s: صلاة %s بعد %d س و %d د" "$EMOJI" "$CITY" "$BEST_AR" "$HH" "$MM"
+              echo "$EMOJI $CITY: صلاة $BEST_AR بعد $HH س و $MM د"
             else
-              printf "%s %s: صلاة %s بعد %d د" "$EMOJI" "$CITY" "$BEST_AR" "$MM"
+              echo "$EMOJI $CITY: صلاة $BEST_AR بعد $MM د"
             fi
           }
 
           update_countdown "Asia/Amman" "عمّان" "🕌" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/cd_amman.txt
           update_countdown "Asia/Riyadh" "مكة" "🕋" "$M_F" "$M_D" "$M_A" "$M_M" "$M_I" > /tmp/cd_makkah.txt
 
+          # ===== العمليات الخلفية =====
           (while true; do
             sleep 60
             TZ='Asia/Amman' date '+%H.%M' > /tmp/c.tmp && mv /tmp/c.tmp /tmp/clock.txt
@@ -306,9 +309,8 @@ jobs:
 
           trap "kill $C_PID $H_PID $D_PID $T_PID 2>/dev/null || true" EXIT INT TERM
 
-          # ===== الفلاتر الأساسية =====
+          # ===== الفلاتر =====
           VF_TEXT="fps=25,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
-
           VF_TEXT="$VF_TEXT,drawtext=fontfile=$FONT:textfile=/tmp/clock.txt:reload=1:expansion=none:fontsize=56:fontcolor=white:x=w-tw-40:y=35:box=1:boxcolor=black@0.8:boxborderw=18"
           VF_TEXT="$VF_TEXT,drawtext=fontfile=$FONT:textfile=/tmp/surah_ar.txt:reload=1:expansion=none:text_shaping=1:fontsize=28:fontcolor=0xD4AF37:x=w-tw-40:y=125:box=1:boxcolor=black@0.8:boxborderw=16"
           VF_TEXT="$VF_TEXT,drawtext=fontfile=$FONT:textfile=/tmp/amman_line.txt:expansion=none:text_shaping=1:fontsize=22:fontcolor=0xD4AF37:x=40:y=40:box=1:boxcolor=black@0.8:boxborderw=14"
@@ -330,22 +332,20 @@ jobs:
           VF_TEXT="$VF_TEXT,drawtext=fontfile=$FONT:textfile=/tmp/cta.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-260:box=1:boxcolor=black@0.85:boxborderw=20"
 
           if [ "$HAS_INFO_CARD" = "yes" ]; then
-            FULL_FILTER="[0:v]$VF_TEXT[stream];[3:v]scale=550:550:force_original_aspect_ratio=decrease,pad=550:550:(ow-iw)/2:(oh-ih)/2:0x0A1929,format=yuv420p[info];[stream][info]overlay=W-w-30:H-h-30,format=yuv420p[vout]"
-            FFMPEG_INPUTS="-stream_loop -1 -f concat -safe 0 -i images.txt -re -stream_loop -1 -i audio.mp3 -stream_loop -1 -i rain.mp3 -loop 1 -i info_card.jpg"
-            echo "Info card WILL be overlaid (bottom-right, 550x550)"
+            FULL_FILTER="[0:v]$VF_TEXT[stream];[3:v]scale=550:550:force_original_aspect_ratio=decrease,pad=550:550:(ow-iw)/2:(oh-ih)/2:0x0A1929,format=yuv420p[info];[stream][info]overlay=x='if(gte(mod(floor(t/3600),2),1),30,W-w-30)':y='H-h-30':enable='lt(mod(t,3600),300)',format=yuv420p[vout]"
+            FFMPEG_INPUTS="-stream_loop -1 -f concat -safe 0 -i images.txt -re -stream_loop -1 -i audio.mp3 -stream_loop -1 -i rain.mp3 -framerate 25 -loop 1 -i info_card.jpg"
+            echo "Info card: 5 min/hour, alternating corners"
           else
             FULL_FILTER="[0:v]$VF_TEXT,format=yuv420p[vout]"
             FFMPEG_INPUTS="-stream_loop -1 -f concat -safe 0 -i images.txt -re -stream_loop -1 -i audio.mp3 -stream_loop -1 -i rain.mp3"
-            echo "Info card NOT found - proceeding without it"
           fi
 
           echo "Starting stream..."
-          echo "Rain sound level: 60%"
-          echo "Filters: $(echo "$VF_TEXT" | grep -o 'drawtext' | wc -l)"
+          echo "Rain sound level: 45%"
 
           timeout 21300 ffmpeg \
             $FFMPEG_INPUTS \
-            -filter_complex "$FULL_FILTER;[1:a]volume=1.0[main];[2:a]volume=0.60[rain];[main][rain]amix=inputs=2:duration=first:normalize=0[aout]" \
+            -filter_complex "$FULL_FILTER;[1:a]volume=1.0[main];[2:a]volume=0.45[rain];[main][rain]amix=inputs=2:duration=first:normalize=0[aout]" \
             -map "[vout]" -map "[aout]" \
             -r 25 \
             -c:v libx264 -preset veryfast -tune stillimage \
