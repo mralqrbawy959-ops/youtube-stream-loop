@@ -208,14 +208,22 @@ jobs:
           [ -z "$FONT" ] && FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
           echo "Font: $FONT"
 
+          if [ ! -f "info_card.jpg" ]; then
+            echo "WARNING: info_card.jpg not found"
+            HAS_INFO_CARD="no"
+          else
+            echo "info_card.jpg found"
+            HAS_INFO_CARD="yes"
+          fi
+
           TZ='Asia/Amman' date '+%H.%M' > /tmp/clock.txt
-          echo "$SURAH_AR" > /tmp/surah_ar.txt
           shuf -n 1 hadith_pool.txt > /tmp/hadith.txt
           shuf -n 1 adhkar_pool.txt > /tmp/dhikr.txt
           shuf -n 1 cta_pool.txt > /tmp/cta.txt
 
-          printf "عمّان  الفجر %s  الظهر %s  العصر %s  المغرب %s  العشاء %s" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/amman_line.txt
-          TZ='Asia/Amman' date '+%Y.%m.%d' > /tmp/date.txt
+          printf "عمّان: الفجر %s | الظهر %s | العصر %s | المغرب %s | العشاء %s" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/amman_line.txt
+          printf "التاريخ: %s" "$(TZ='Asia/Amman' date '+%Y.%m.%d')" > /tmp/date.txt
+          printf "السورة: %s" "$SURAH_AR" > /tmp/surah_ar.txt
 
           STREAM_START=$(date +%s)
           TODAY_AMMAN=$(TZ='Asia/Amman' date '+%Y-%m-%d')
@@ -236,14 +244,14 @@ jobs:
               else
                 NOTIFY_ENABLE="$NOTIFY_ENABLE+between(t,$OFFSET,$END)"
               fi
-              echo "إشعار: صلاة $AR بعد $OFFSET ثانية"
             fi
           done
 
           update_countdown() {
             local TZ_NAME="$1"
             local CITY="$2"
-            local F="$3"; local D="$4"; local A="$5"; local M="$6"; local I="$7"
+            local EMOJI="$3"
+            local F="$4"; local D="$5"; local A="$6"; local M="$7"; local I="$8"
             local NOW=$(date +%s)
             local TODAY=$(TZ="$TZ_NAME" date '+%Y-%m-%d')
             local BEST_AR=""; local BEST_OFF=999999
@@ -265,24 +273,20 @@ jobs:
             local HH=$((BEST_OFF / 3600))
             local MM=$(((BEST_OFF % 3600) / 60))
             if [ "$HH" -gt 0 ]; then
-              printf "%s: %s بعد %d س و %d د" "$CITY" "$BEST_AR" "$HH" "$MM"
+              printf "%s %s: صلاة %s بعد %d س و %d د" "$EMOJI" "$CITY" "$BEST_AR" "$HH" "$MM"
             else
-              printf "%s: %s بعد %d د" "$CITY" "$BEST_AR" "$MM"
+              printf "%s %s: صلاة %s بعد %d د" "$EMOJI" "$CITY" "$BEST_AR" "$MM"
             fi
           }
 
-          update_countdown "Asia/Amman" "عمّان" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/cd_amman.txt
-          update_countdown "Asia/Riyadh" "مكة" "$M_F" "$M_D" "$M_A" "$M_M" "$M_I" > /tmp/cd_makkah.txt
-
-          echo "Amman: $(cat /tmp/cd_amman.txt)"
-          echo "Makkah: $(cat /tmp/cd_makkah.txt)"
-          echo "CTA: $(cat /tmp/cta.txt)"
+          update_countdown "Asia/Amman" "عمّان" "🕌" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/cd_amman.txt
+          update_countdown "Asia/Riyadh" "مكة" "🕋" "$M_F" "$M_D" "$M_A" "$M_M" "$M_I" > /tmp/cd_makkah.txt
 
           (while true; do
             sleep 60
             TZ='Asia/Amman' date '+%H.%M' > /tmp/c.tmp && mv /tmp/c.tmp /tmp/clock.txt
-            update_countdown "Asia/Amman" "عمّان" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/cda.tmp && mv /tmp/cda.tmp /tmp/cd_amman.txt
-            update_countdown "Asia/Riyadh" "مكة" "$M_F" "$M_D" "$M_A" "$M_M" "$M_I" > /tmp/cdm.tmp && mv /tmp/cdm.tmp /tmp/cd_makkah.txt
+            update_countdown "Asia/Amman" "عمّان" "🕌" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/cda.tmp && mv /tmp/cda.tmp /tmp/cd_amman.txt
+            update_countdown "Asia/Riyadh" "مكة" "🕋" "$M_F" "$M_D" "$M_A" "$M_M" "$M_I" > /tmp/cdm.tmp && mv /tmp/cdm.tmp /tmp/cd_makkah.txt
           done) & C_PID=$!
 
           (while true; do
@@ -302,36 +306,46 @@ jobs:
 
           trap "kill $C_PID $H_PID $D_PID $T_PID 2>/dev/null || true" EXIT INT TERM
 
-          VF="fps=25,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/clock.txt:reload=1:expansion=none:fontsize=54:fontcolor=white:x=w-tw-40:y=40:box=1:boxcolor=black@0.75:boxborderw=18"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/surah_ar.txt:reload=1:expansion=none:text_shaping=1:fontsize=32:fontcolor=0xD4AF37:x=w-tw-40:y=115:box=1:boxcolor=black@0.75:boxborderw=18"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/amman_line.txt:expansion=none:text_shaping=1:fontsize=22:fontcolor=0xD4AF37:x=40:y=40:box=1:boxcolor=black@0.75:boxborderw=14"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/date.txt:reload=1:expansion=none:fontsize=22:fontcolor=white:x=40:y=90:box=1:boxcolor=black@0.75:boxborderw=14"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/hadith.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=180:box=1:boxcolor=black@0.85:boxborderw=22"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/dhikr.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=white:x=(w-tw)/2:y=245:box=1:boxcolor=black@0.85:boxborderw=20"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cta.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-240:box=1:boxcolor=black@0.85:boxborderw=22"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_amman.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-175:box=1:boxcolor=black@0.8:boxborderw=18"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_makkah.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-130:box=1:boxcolor=black@0.8:boxborderw=18"
-          VF="$VF,drawtext=fontfile=$FONT:text='بث القرآن الكريم مباشر':expansion=none:text_shaping=1:fontsize=24:fontcolor=white:x=(w-tw)/2:y=h-80:box=1:boxcolor=black@0.75:boxborderw=16"
+          # ===== الفلاتر الأساسية =====
+          VF_TEXT="fps=25,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
+
+          VF_TEXT="$VF_TEXT,drawtext=fontfile=$FONT:textfile=/tmp/clock.txt:reload=1:expansion=none:fontsize=56:fontcolor=white:x=w-tw-40:y=35:box=1:boxcolor=black@0.8:boxborderw=18"
+          VF_TEXT="$VF_TEXT,drawtext=fontfile=$FONT:textfile=/tmp/surah_ar.txt:reload=1:expansion=none:text_shaping=1:fontsize=28:fontcolor=0xD4AF37:x=w-tw-40:y=125:box=1:boxcolor=black@0.8:boxborderw=16"
+          VF_TEXT="$VF_TEXT,drawtext=fontfile=$FONT:textfile=/tmp/amman_line.txt:expansion=none:text_shaping=1:fontsize=22:fontcolor=0xD4AF37:x=40:y=40:box=1:boxcolor=black@0.8:boxborderw=14"
+          VF_TEXT="$VF_TEXT,drawtext=fontfile=$FONT:textfile=/tmp/date.txt:reload=1:expansion=none:text_shaping=1:fontsize=22:fontcolor=white:x=40:y=95:box=1:boxcolor=black@0.8:boxborderw=14"
+          VF_TEXT="$VF_TEXT,drawtext=fontfile=$FONT:textfile=/tmp/hadith.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=0xD4AF37:x=(w-tw)/2:y=190:box=1:boxcolor=black@0.85:boxborderw=24"
+          VF_TEXT="$VF_TEXT,drawtext=fontfile=$FONT:textfile=/tmp/dhikr.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=white:x=(w-tw)/2:y=260:box=1:boxcolor=black@0.85:boxborderw=22"
 
           if [ -n "$NOTIFY_ENABLE" ]; then
-            VF="$VF,drawtext=fontfile=$FONT:text='حان الآن وقت الصلاة في عمّان':expansion=none:text_shaping=1:fontsize=60:fontcolor=0xD4AF37:x=(w-tw)/2:y=400:box=1:boxcolor=black@0.9:boxborderw=35:enable='$NOTIFY_ENABLE'"
+            VF_TEXT="$VF_TEXT,drawtext=fontfile=$FONT:text='حان الآن وقت الصلاة في عمّان':expansion=none:text_shaping=1:fontsize=60:fontcolor=0xD4AF37:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.9:boxborderw=35:enable='$NOTIFY_ENABLE'"
           fi
 
           if [ "$IS_FRIDAY" = "true" ]; then
-            VF="$VF,drawtext=fontfile=$FONT:text='جمعة مباركة - يوم سورة الكهف':expansion=none:text_shaping=1:fontsize=36:fontcolor=0xD4AF37:x=(w-tw)/2:y=560:box=1:boxcolor=black@0.85:boxborderw=22"
+            VF_TEXT="$VF_TEXT,drawtext=fontfile=$FONT:text='جمعة مباركة — يوم سورة الكهف':expansion=none:text_shaping=1:fontsize=34:fontcolor=0xD4AF37:x=(w-tw)/2:y=340:box=1:boxcolor=black@0.85:boxborderw=20"
           fi
 
-          VF="$VF,format=yuv420p"
+          VF_TEXT="$VF_TEXT,drawtext=fontfile=$FONT:text='بث القرآن الكريم مباشر':expansion=none:text_shaping=1:fontsize=24:fontcolor=white:x=(w-tw)/2:y=h-55:box=1:boxcolor=black@0.8:boxborderw=14"
+          VF_TEXT="$VF_TEXT,drawtext=fontfile=$FONT:textfile=/tmp/cd_makkah.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-120:box=1:boxcolor=black@0.8:boxborderw=16"
+          VF_TEXT="$VF_TEXT,drawtext=fontfile=$FONT:textfile=/tmp/cd_amman.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-185:box=1:boxcolor=black@0.8:boxborderw=16"
+          VF_TEXT="$VF_TEXT,drawtext=fontfile=$FONT:textfile=/tmp/cta.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-260:box=1:boxcolor=black@0.85:boxborderw=20"
 
-          echo "Starting stream with rain sound in background..."
-          echo "Filters: $(echo "$VF" | grep -o 'drawtext' | wc -l)"
+          if [ "$HAS_INFO_CARD" = "yes" ]; then
+            FULL_FILTER="[0:v]$VF_TEXT[stream];[3:v]scale=550:550:force_original_aspect_ratio=decrease,pad=550:550:(ow-iw)/2:(oh-ih)/2:0x0A1929,format=yuv420p[info];[stream][info]overlay=W-w-30:H-h-30,format=yuv420p[vout]"
+            FFMPEG_INPUTS="-stream_loop -1 -f concat -safe 0 -i images.txt -re -stream_loop -1 -i audio.mp3 -stream_loop -1 -i rain.mp3 -loop 1 -i info_card.jpg"
+            echo "Info card WILL be overlaid (bottom-right, 550x550)"
+          else
+            FULL_FILTER="[0:v]$VF_TEXT,format=yuv420p[vout]"
+            FFMPEG_INPUTS="-stream_loop -1 -f concat -safe 0 -i images.txt -re -stream_loop -1 -i audio.mp3 -stream_loop -1 -i rain.mp3"
+            echo "Info card NOT found - proceeding without it"
+          fi
+
+          echo "Starting stream..."
+          echo "Rain sound level: 60%"
+          echo "Filters: $(echo "$VF_TEXT" | grep -o 'drawtext' | wc -l)"
 
           timeout 21300 ffmpeg \
-            -stream_loop -1 -f concat -safe 0 -i images.txt \
-            -re -stream_loop -1 -i audio.mp3 \
-            -stream_loop -1 -i rain.mp3 \
-            -filter_complex "[0:v]$VF[vout];[1:a]volume=1.0[main];[2:a]volume=0.15[rain];[main][rain]amix=inputs=2:duration=first:normalize=0[aout]" \
+            $FFMPEG_INPUTS \
+            -filter_complex "$FULL_FILTER;[1:a]volume=1.0[main];[2:a]volume=0.60[rain];[main][rain]amix=inputs=2:duration=first:normalize=0[aout]" \
             -map "[vout]" -map "[aout]" \
             -r 25 \
             -c:v libx264 -preset veryfast -tune stillimage \
