@@ -52,73 +52,100 @@ jobs:
             echo "surah_ar=سورة البقرة" >> $GITHUB_OUTPUT
           fi
 
-      - name: Fetch Prayer Times, Hijri & Weather
+      - name: Fetch Prayer Times, Hijri and Weather
         id: data
         run: |
           TODAY_DD=$(TZ='Asia/Amman' date '+%d-%m-%Y')
-          TODAY=$(TZ='Asia/Amman' date '+%Y-%m-%d')
           CACHE_FILE="prayer_times_cache.json"
           NEED_FETCH="yes"
-          
-          if [ -f "$CACHE_FILE" ]; then
-            TEST=$(jq -r --arg d "$TODAY_DD" '.Amman | to_entries[] | select(.value.gregorian_date == $d) | .value.fajr' "$CACHE_FILE" 2>/dev/null | head -1)
-            [ -n "$TEST" ] && [ "$TEST" != "null" ] && NEED_FETCH="no" && echo "✅ Cache valid"
+
+          if [ -f "$CACHE_FILE" ] && [ -s "$CACHE_FILE" ]; then
+            TEST=$(jq -r --arg d "$TODAY_DD" '.["Amman"]["'"$TODAY_DD"'"].fajr // empty' "$CACHE_FILE" 2>/dev/null)
+            if [ -n "$TEST" ] && [ "$TEST" != "null" ]; then
+              NEED_FETCH="no"
+              echo "Cache valid: fajr=$TEST"
+            fi
           fi
-          
+
           if [ "$NEED_FETCH" = "yes" ]; then
-            echo "📥 Fetching 2 months..."
+            echo "Fetching prayer times (2 months)..."
             MONTH=$(TZ='Asia/Amman' date '+%m')
             YEAR=$(TZ='Asia/Amman' date '+%Y')
             NEXT_MONTH_NUM=$((10#$MONTH + 1))
             NEXT_YEAR=$YEAR
-            [ $NEXT_MONTH_NUM -gt 12 ] && NEXT_MONTH_NUM=1 && NEXT_YEAR=$((YEAR + 1))
+            if [ $NEXT_MONTH_NUM -gt 12 ]; then
+              NEXT_MONTH_NUM=1
+              NEXT_YEAR=$((YEAR + 1))
+            fi
             NEXT_MONTH=$(printf "%02d" $NEXT_MONTH_NUM)
-            
-            declare -A CITIES=(
-              ["Amman"]="Amman,Jordan,23"
-              ["Jerusalem"]="Jerusalem,Palestine,23"
-              ["Damascus"]="Damascus,Syria,23"
-              ["Baghdad"]="Baghdad,Iraq,23"
-              ["Riyadh"]="Riyadh,Saudi%20Arabia,4"
-              ["Cairo"]="Cairo,Egypt,5"
-              ["Kuwait"]="Kuwait,Kuwait,9"
-            )
-            
-            TMP_CACHE=$(mktemp)
-            echo "{" > "$TMP_CACHE"
-            echo "\"generated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"," >> "$TMP_CACHE"
-            
-            FIRST_CITY=true
-            for CITY_KEY in "${!CITIES[@]}"; do
-              IFS=',' read -r CN CO ME <<< "${CITIES[$CITY_KEY]}"
-              R1=$(curl -s --max-time 30 "https://api.aladhan.com/v1/calendarByCity?city=$CN&country=$CO&method=$ME&month=$MONTH&year=$YEAR" 2>/dev/null || echo "")
-              R2=$(curl -s --max-time 30 "https://api.aladhan.com/v1/calendarByCity?city=$CN&country=$CO&method=$ME&month=$NEXT_MONTH&year=$NEXT_YEAR" 2>/dev/null || echo "")
-              
+
+            FINAL_JSON="/tmp/prayer_final.json"
+            echo "{" > "$FINAL_JSON"
+            echo "  \"generated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"" >> "$FINAL_JSON"
+
+            fetch_city() {
+              local KEY="$1"
+              local CITY="$2"
+              local COUNTRY="$3"
+              local METHOD="$4"
+
+              echo "  Fetching $KEY..."
+              local URL1="https://api.aladhan.com/v1/calendarByCity?city=$CITY&country=$COUNTRY&method=$METHOD&month=$MONTH&year=$YEAR"
+              local URL2="https://api.aladhan.com/v1/calendarByCity?city=$CITY&country=$COUNTRY&method=$METHOD&month=$NEXT_MONTH&year=$NEXT_YEAR"
+
+              local R1=$(curl -s --max-time 30 -L "$URL1" 2>/dev/null)
+              local R2=$(curl -s --max-time 30 -L "$URL2" 2>/dev/null)
+
               if echo "$R1" | grep -q '"Fajr"'; then
-                [ "$FIRST_CITY" = "false" ] && echo "," >> "$TMP_CACHE"
-                FIRST_CITY=false
-                echo "\"$CITY_KEY\": {" >> "$TMP_CACHE"
-                FIRST_DAY=true
+                echo "    OK: $KEY"
+                echo ",\"$KEY\":{" >> "$FINAL_JSON"
+
+                local FIRST="true"
                 for RES in "$R1" "$R2"; do
-                  echo "$RES" | jq -r '.data[] | "\(.date.gregorian.date)|\(.timings.Fajr)|\(.timings.Dhuhr)|\(.timings.Asr)|\(.timings.Maghrib)|\(.timings.Isha)|\(.date.hijri.day)|\(.date.hijri.month.ar)|\(.date.hijri.year)"' 2>/dev/null | while IFS='|' read -r D F DH A M I HD HM HY; do
-                    [ "$FIRST_DAY" = "false" ] && echo "," >> "$TMP_CACHE"
-                    FIRST_DAY=false
-                    echo "  \"$D\": {\"gregorian_date\": \"$D\", \"fajr\": \"${F:0:5}\", \"dhuhr\": \"${DH:0:5}\", \"asr\": \"${A:0:5}\", \"maghrib\": \"${M:0:5}\", \"isha\": \"${I:0:5}\", \"hijri_day\": \"$HD\", \"hijri_month\": \"$HM\", \"hijri_year\": \"$HY\"}" >> "$TMP_CACHE"
+                  echo "$RES" | jq -r '.data[] | "\(.date.gregorian.date)|\(.timings.Fajr)|\(.timings.Dhuhr)|\(.timings.Asr)|\(.timings.Maghrib)|\(.timings.Isha)|\(.date.hijri.day)|\(.date.hijri.month.ar)|\(.date.hijri.year)"' 2>/dev/null | while IFS='|' read -r DATE F D A M I HD HM HY; do
+                    if [ "$FIRST" = "true" ]; then
+                      FIRST="false"
+                    else
+                      echo "," >> "$FINAL_JSON"
+                    fi
+                    printf '"%s":{"gregorian_date":"%s","fajr":"%s","dhuhr":"%s","asr":"%s","maghrib":"%s","isha":"%s","hijri_day":"%s","hijri_month":"%s","hijri_year":"%s"}' \
+                      "$DATE" "$DATE" "${F:0:5}" "${D:0:5}" "${A:0:5}" "${M:0:5}" "${I:0:5}" "$HD" "$HM" "$HY" >> "$FINAL_JSON"
                   done
                 done
-                echo "}" >> "$TMP_CACHE"
+                echo "}" >> "$FINAL_JSON"
+              else
+                echo "    FAILED: $KEY"
               fi
-            done
-            echo "}" >> "$TMP_CACHE"
-            mv "$TMP_CACHE" "$CACHE_FILE"
-            echo "✅ Cache: $(du -h $CACHE_FILE | cut -f1)"
+            }
+
+            fetch_city "Amman" "Amman" "Jordan" "23"
+            fetch_city "Jerusalem" "Jerusalem" "Palestine" "23"
+            fetch_city "Damascus" "Damascus" "Syria" "23"
+            fetch_city "Baghdad" "Baghdad" "Iraq" "23"
+            fetch_city "Riyadh" "Riyadh" "Saudi%20Arabia" "4"
+            fetch_city "Cairo" "Cairo" "Egypt" "5"
+            fetch_city "Kuwait" "Kuwait" "Kuwait" "9"
+
+            echo "}" >> "$FINAL_JSON"
+
+            if jq empty "$FINAL_JSON" 2>/dev/null; then
+              SIZE=$(du -h "$FINAL_JSON" | cut -f1)
+              echo "Valid JSON created: $SIZE"
+              mv "$FINAL_JSON" "$CACHE_FILE"
+            else
+              echo "Invalid JSON - keeping old cache"
+            fi
           fi
-          
+
           read_val() {
-            local V=$(jq -r --arg d "$TODAY_DD" ".$1[\"$d\"].$2 // \"\"" "$CACHE_FILE" 2>/dev/null)
-            [ -z "$V" ] || [ "$V" = "null" ] && echo "$3" || echo "$V"
+            local V=$(jq -r --arg d "$TODAY_DD" '.["'"$1"'"]["'"$TODAY_DD"'"].'"$2"' // empty' "$CACHE_FILE" 2>/dev/null)
+            if [ -z "$V" ] || [ "$V" = "null" ]; then
+              echo "$3"
+            else
+              echo "$V"
+            fi
           }
-          
+
           A_F=$(read_val "Amman" "fajr" "05:13")
           A_D=$(read_val "Amman" "dhuhr" "12:25")
           A_A=$(read_val "Amman" "asr" "15:44")
@@ -129,11 +156,13 @@ jobs:
           M_A=$(read_val "Riyadh" "asr" "15:30")
           M_M=$(read_val "Riyadh" "maghrib" "18:00")
           M_I=$(read_val "Riyadh" "isha" "19:30")
-          
           H_DAY=$(read_val "Amman" "hijri_day" "1")
           H_MONTH=$(read_val "Amman" "hijri_month" "محرم")
           H_YEAR=$(read_val "Amman" "hijri_year" "1448")
-          
+
+          echo "Amman: $A_F $A_D $A_A $A_M $A_I"
+          echo "Hijri: $H_DAY $H_MONTH $H_YEAR"
+
           echo "amman_fajr=$A_F" >> $GITHUB_OUTPUT
           echo "amman_dhuhr=$A_D" >> $GITHUB_OUTPUT
           echo "amman_asr=$A_A" >> $GITHUB_OUTPUT
@@ -147,9 +176,9 @@ jobs:
           echo "hijri_day=$H_DAY" >> $GITHUB_OUTPUT
           echo "hijri_month=$H_MONTH" >> $GITHUB_OUTPUT
           echo "hijri_year=$H_YEAR" >> $GITHUB_OUTPUT
-          
+
           WEATHER=$(curl -s --max-time 10 "https://wttr.in/Amman?format=%t" 2>/dev/null | tr -d ' ' | head -c 10)
-          [ -z "$WEATHER" ] && WEATHER="22°C"
+          [ -z "$WEATHER" ] && WEATHER="22C"
           echo "weather=$WEATHER" >> $GITHUB_OUTPUT
 
       - name: Commit Cache
@@ -159,7 +188,12 @@ jobs:
             git config user.name "GitHub Actions"
             git config user.email "actions@github.com"
             git add prayer_times_cache.json
-            git diff --staged --quiet || { git commit -m "Update cache [skip ci]"; git push || true; }
+            if git diff --staged --quiet; then
+              echo "No changes"
+            else
+              git commit -m "Update prayer cache [skip ci]"
+              git push || echo "Push failed - continuing"
+            fi
           fi
 
       - name: Download Audio and Rain
@@ -213,7 +247,7 @@ jobs:
               > hadith_pool.txt
           else
             printf '%s\n' \
-              "لا تجعلوا بيوتكم مقابر، إن الشيطان ينفر من البيت الذي تُقرأ فيه سورة البقرة" \
+              "لا تجعلوا بيوتكم مقابر، إن الشيطان ينفر من البيت الذي تقرأ فيه سورة البقرة" \
               "اقرؤوا سورة البقرة، فإن أخذها بركة، وتركها حسرة" \
               "من قرأ الآيتين الأخيرتين من سورة البقرة في ليلة كفتاه" \
               "آية الكرسي أعظم آية في كتاب الله" \
@@ -226,30 +260,28 @@ jobs:
             "الحمد لله رب العالمين" \
             "لا حول ولا قوة إلا بالله" \
             "أستغفر الله العظيم وأتوب إليه" \
-            "اللهم صلِّ وسلم على نبينا محمد" \
+            "اللهم صل وسلم على نبينا محمد" \
             "حسبي الله ونعم الوكيل" \
             > adhkar_pool.txt
 
           printf '%s\n' \
-            "اكتب في التعليقات: صلوا على النبي محمد ﷺ" \
+            "اكتب في التعليقات: صلوا على النبي محمد" \
             "شارك البث مع أحبابك، فالدال على الخير كفاعله" \
-            "اشترك في القناة وفعّل الجرس ليصلك كل جديد" \
+            "اشترك في القناة وفعل الجرس ليصلك كل جديد" \
             "اكتب في التعليقات: لا إله إلا الله" \
             "لا تنسونا من صالح دعائكم" \
-            "شغّل البث في بيتك لتغمره البركة والسكينة" \
+            "شغل البث في بيتك لتغمره البركة والسكينة" \
             > cta_pool.txt
 
           printf '%s\n' \
-            "﴿ إِنَّ اللَّهَ مَعَ الصَّابِرِينَ ﴾" \
-            "﴿ وَبَشِّرِ الصَّابِرِينَ ﴾" \
-            "﴿ اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ ﴾" \
-            "﴿ وَسِعَ كُرْسِيُّهُ السَّمَاوَاتِ وَالْأَرْضَ ﴾" \
-            "﴿ رَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً ﴾" \
-            "﴿ إِنَّا لِلَّهِ وَإِنَّا إِلَيْهِ رَاجِعُونَ ﴾" \
-            "﴿ وَذَكِّرْ فَإِنَّ الذِّكْرَىٰ تَنفَعُ الْمُؤْمِنِينَ ﴾" \
-            "﴿ أَلَا بِذِكْرِ اللَّهِ تَطْمَئِنُّ الْقُلُوبُ ﴾" \
-            "﴿ وَمَن يَتَّقِ اللَّهَ يَجْعَل لَّهُ مَخْرَجًا ﴾" \
-            "﴿ فَاذْكُرُونِي أَذْكُرْكُمْ ﴾" \
+            "إِنَّ اللَّهَ مَعَ الصَّابِرِينَ" \
+            "وَبَشِّرِ الصَّابِرِينَ" \
+            "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ" \
+            "وَسِعَ كُرْسِيُّهُ السَّمَاوَاتِ وَالْأَرْضَ" \
+            "رَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً" \
+            "إِنَّا لِلَّهِ وَإِنَّا إِلَيْهِ رَاجِعُونَ" \
+            "وَذَكِّرْ فَإِنَّ الذِّكْرَىٰ تَنفَعُ الْمُؤْمِنِينَ" \
+            "أَلَا بِذِكْرِ اللَّهِ تَطْمَئِنُّ الْقُلُوبُ" \
             > verses_pool.txt
 
           printf '%s\n' \
@@ -257,7 +289,6 @@ jobs:
             "🌅 أذكار الصباح: اللهم بك أصبحنا وبك أمسينا" \
             "🌅 أذكار الصباح: سبحان الله وبحمده 100 مرة" \
             "🌅 أذكار الصباح: آية الكرسي حصن المسلم" \
-            "🌅 أذكار الصباح: قل هو الله أحد 3 مرات" \
             > morning_adhkar.txt
 
           printf '%s\n' \
@@ -265,7 +296,6 @@ jobs:
             "🌙 أذكار المساء: اللهم بك أمسينا وبك أصبحنا" \
             "🌙 أذكار المساء: أعوذ بكلمات الله التامات" \
             "🌙 أذكار المساء: بسم الله الذي لا يضر مع اسمه شيء" \
-            "🌙 أذكار المساء: سبحان الله وبحمده 100 مرة" \
             > evening_adhkar.txt
 
       - name: Stream to YouTube
@@ -298,7 +328,6 @@ jobs:
 
           [ ! -f "info_card.jpg" ] && HAS_INFO_CARD="no" || HAS_INFO_CARD="yes"
 
-          STREAM_START=$(date +%s)
           TZ='Asia/Amman' date '+%H.%M' > /tmp/clock.txt
           shuf -n 1 hadith_pool.txt > /tmp/hadith.txt
           shuf -n 1 adhkar_pool.txt > /tmp/dhikr.txt
@@ -306,18 +335,18 @@ jobs:
           shuf -n 1 verses_pool.txt > /tmp/verse.txt
 
           AMMAN_DATE="$(TZ='Asia/Amman' date '+%Y.%m.%d')"
-          echo "📅 $AMMAN_DATE • 🌙 $H_DAY $H_MONTH $H_YEAR هـ" > /tmp/dates.txt
-          echo "📖 السورة: $SURAH_AR" > /tmp/surah_ar.txt
-          echo "🌡️ عمّان $WEATHER • 🕋 القبلة 157°" > /tmp/weather_line.txt
+          echo "التاريخ: $AMMAN_DATE • $H_DAY $H_MONTH $H_YEAR هـ" > /tmp/dates.txt
+          echo "السورة: $SURAH_AR" > /tmp/surah_ar.txt
+          echo "عمّان $WEATHER • القبلة 157°" > /tmp/weather_line.txt
           echo "عمّان • الفجر $A_F • الظهر $A_D • العصر $A_A • المغرب $A_M • العشاء $A_I" > /tmp/amman_line.txt
-          
+
           if [ "$IS_FRIDAY" = "true" ]; then
-            echo "🎙️ القارئ: ياسر الزيلعي • سورة الكهف" > /tmp/reciter_line.txt
+            echo "القارئ: ياسر الزيلعي • سورة الكهف" > /tmp/reciter_line.txt
           else
-            echo "🎙️ القارئ: ياسر الزيلعي • سورة البقرة" > /tmp/reciter_line.txt
+            echo "القارئ: ياسر الزيلعي • سورة البقرة" > /tmp/reciter_line.txt
           fi
 
-          STREAM_START_EPOCH=$(date +%s)
+          STREAM_START=$(date +%s)
           TODAY_AMMAN=$(TZ='Asia/Amman' date '+%Y-%m-%d')
           NOTIFY_BEFORE=""
           NOTIFY_AFTER=""
@@ -327,17 +356,15 @@ jobs:
             [ -z "$t" ] && continue
             PE=$(TZ='Asia/Amman' date -d "$TODAY_AMMAN $t" +%s 2>/dev/null)
             [ -z "$PE" ] && continue
-            [ "$PE" -lt "$STREAM_START_EPOCH" ] && PE=$((PE + 86400))
-            OFF=$((PE - STREAM_START_EPOCH))
+            [ "$PE" -lt "$STREAM_START" ] && PE=$((PE + 86400))
+            OFF=$((PE - STREAM_START))
             if [ "$OFF" -ge 0 ] && [ "$OFF" -lt 21300 ]; then
-              # 5 دقائق قبل
-              BEFORE_START=$((OFF - 300))
-              [ "$BEFORE_START" -lt 0 ] && BEFORE_START=0
-              ADD="between(t,$BEFORE_START,$OFF)"
+              BEFORE=$((OFF - 300))
+              [ "$BEFORE" -lt 0 ] && BEFORE=0
+              ADD="between(t,$BEFORE,$OFF)"
               [ -z "$NOTIFY_BEFORE" ] && NOTIFY_BEFORE="$ADD" || NOTIFY_BEFORE="$NOTIFY_BEFORE+$ADD"
-              # 3 دقائق بعد
-              AFTER_END=$((OFF + 180))
-              ADD2="between(t,$OFF,$AFTER_END)"
+              AFTER=$((OFF + 180))
+              ADD2="between(t,$OFF,$AFTER)"
               [ -z "$NOTIFY_AFTER" ] && NOTIFY_AFTER="$ADD2" || NOTIFY_AFTER="$NOTIFY_AFTER+$ADD2"
             fi
           done
@@ -355,7 +382,7 @@ jobs:
               [ -z "$PE" ] && continue
               [ "$PE" -lt "$NOW" ] && PE=$((PE + 86400))
               local OFF=$((PE - NOW))
-              [ "$OFF" -lt "$BO" ] && BO=$OFF && BA="$AR"
+              if [ "$OFF" -lt "$BO" ]; then BO=$OFF; BA="$AR"; fi
             done
             local HH=$((BO / 3600)); local MM=$(((BO % 3600) / 60))
             if [ "$HH" -gt 0 ]; then
@@ -368,7 +395,6 @@ jobs:
           update_countdown "Asia/Amman" "عمّان" "🕌" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/cd_amman.txt
           update_countdown "Asia/Riyadh" "مكة" "🕋" "$M_F" "$M_D" "$M_A" "$M_M" "$M_I" > /tmp/cd_makkah.txt
 
-          # ===== العمليات الخلفية =====
           (while true; do
             sleep 60
             TZ='Asia/Amman' date '+%H.%M' > /tmp/c.tmp && mv /tmp/c.tmp /tmp/clock.txt
@@ -381,97 +407,68 @@ jobs:
           (while true; do sleep 240; shuf -n 1 cta_pool.txt > /tmp/ct.tmp && mv /tmp/ct.tmp /tmp/cta.txt; done) & T_PID=$!
           (while true; do sleep 3600; shuf -n 1 verses_pool.txt > /tmp/v.tmp && mv /tmp/v.tmp /tmp/verse.txt; done) & V_PID=$!
 
-          # ⏱️ عدّاد مدة البث
           (while true; do
             sleep 60
             NOW=$(date +%s)
-            ELAPSED=$((NOW - STREAM_START))
-            HH=$((ELAPSED / 3600))
-            MM=$(((ELAPSED % 3600) / 60))
-            DDH=$((ELAPSED % 60))
-            printf "⏱️ مدة البث: %02d:%02d:%02d" $HH $MM $DDH > /tmp/duration.txt
+            EL=$((NOW - STREAM_START))
+            HH=$((EL / 3600)); MM=$(((EL % 3600) / 60)); SS=$((EL % 60))
+            printf "مدة البث: %02d:%02d:%02d" $HH $MM $SS > /tmp/duration.txt
           done) & DUR_PID=$!
 
-          # 📿 أذكار صباح/مساء
-          (while true; do
-            sleep 60
-            HOUR=$(TZ='Asia/Amman' date '+%H')
-            if [ "$HOUR" -ge 4 ] && [ "$HOUR" -lt 12 ]; then
-              shuf -n 1 morning_adhkar.txt > /tmp/dh.tmp && mv /tmp/dh.tmp /tmp/dhikr_am.txt
-            else
-              shuf -n 1 evening_adhkar.txt > /tmp/dh.tmp && mv /tmp/dh.tmp /tmp/dhikr_am.txt
-            fi
-          done) & AM_PID=$!
-          
-          # تحديث أولي
-          HOUR=$(TZ='Asia/Amman' date '+%H')
-          if [ "$HOUR" -ge 4 ] && [ "$HOUR" -lt 12 ]; then
+          HOUR_NOW=$(TZ='Asia/Amman' date '+%H')
+          if [ "$HOUR_NOW" -ge 4 ] && [ "$HOUR_NOW" -lt 12 ]; then
             shuf -n 1 morning_adhkar.txt > /tmp/dhikr_am.txt
           else
             shuf -n 1 evening_adhkar.txt > /tmp/dhikr_am.txt
           fi
 
+          (while true; do
+            sleep 3600
+            HOUR_NOW=$(TZ='Asia/Amman' date '+%H')
+            if [ "$HOUR_NOW" -ge 4 ] && [ "$HOUR_NOW" -lt 12 ]; then
+              shuf -n 1 morning_adhkar.txt > /tmp/da.tmp && mv /tmp/da.tmp /tmp/dhikr_am.txt
+            else
+              shuf -n 1 evening_adhkar.txt > /tmp/da.tmp && mv /tmp/da.tmp /tmp/dhikr_am.txt
+            fi
+          done) & AM_PID=$!
+
           trap "kill $C_PID $H_PID $D_PID $T_PID $V_PID $DUR_PID $AM_PID 2>/dev/null || true" EXIT INT TERM
 
-          # ===== بناء الفلاتر =====
           VF="fps=25,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
 
-          # ═══ الأعلى ═══
-          # أعلى يمين: الساعة
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/clock.txt:reload=1:expansion=none:fontsize=56:fontcolor=white:x=w-tw-40:y=35:box=1:boxcolor=black@0.8:boxborderw=18"
-          # أعلى يمين: السورة
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/surah_ar.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=w-tw-40:y=120:box=1:boxcolor=black@0.8:boxborderw=14"
-          # أعلى يمين: مدة البث
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/duration.txt:reload=1:expansion=none:text_shaping=1:fontsize=22:fontcolor=white:x=w-tw-40:y=175:box=1:boxcolor=black@0.75:boxborderw=12"
 
-          # أعلى يسار: المواقيت
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/amman_line.txt:expansion=none:text_shaping=1:fontsize=22:fontcolor=0xD4AF37:x=40:y=40:box=1:boxcolor=black@0.8:boxborderw=14"
-          # أعلى يسار: التاريخ (ميلادي + هجري)
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/dates.txt:reload=1:expansion=none:text_shaping=1:fontsize=22:fontcolor=white:x=40:y=95:box=1:boxcolor=black@0.8:boxborderw=14"
-          # أعلى يسار: الطقس + القبلة
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/weather_line.txt:reload=1:expansion=none:text_shaping=1:fontsize=20:fontcolor=0xD4AF37:x=40:y=145:box=1:boxcolor=black@0.75:boxborderw=12"
-          # أعلى يسار: القارئ
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/reciter_line.txt:reload=1:expansion=none:text_shaping=1:fontsize=20:fontcolor=white:x=40:y=195:box=1:boxcolor=black@0.75:boxborderw=12"
 
-          # ═══ الوسط ═══
-          # الحديث
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/hadith.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=260:box=1:boxcolor=black@0.85:boxborderw=22"
-          # الذكر
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/dhikr.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=white:x=(w-tw)/2:y=325:box=1:boxcolor=black@0.85:boxborderw=20"
-          # آية اليوم
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/verse.txt:reload=1:expansion=none:text_shaping=1:fontsize=22:fontcolor=0xFFD700:x=(w-tw)/2:y=390:box=1:boxcolor=black@0.85:boxborderw=20"
-
-          # أذكار صباح/مساء
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/dhikr_am.txt:reload=1:expansion=none:text_shaping=1:fontsize=22:fontcolor=0xFFA500:x=(w-tw)/2:y=455:box=1:boxcolor=black@0.8:boxborderw=18"
 
-          # 🕌 إشعار قبل الصلاة بـ 5 دقائق
           if [ -n "$NOTIFY_BEFORE" ]; then
-            VF="$VF,drawtext=fontfile=$FONT:text='🕌 اقترب وقت الصلاة في عمّان':expansion=none:text_shaping=1:fontsize=50:fontcolor=0xD4AF37:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.9:boxborderw=30:enable='$NOTIFY_BEFORE'"
+            VF="$VF,drawtext=fontfile=$FONT:text='اقترب وقت الصلاة في عمّان':expansion=none:text_shaping=1:fontsize=50:fontcolor=0xD4AF37:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.9:boxborderw=30:enable='$NOTIFY_BEFORE'"
           fi
 
-          # 🕌 إشعار دخول وقت الصلاة
           if [ -n "$NOTIFY_AFTER" ]; then
-            VF="$VF,drawtext=fontfile=$FONT:text='🕌 حان الآن وقت الصلاة في عمّان':expansion=none:text_shaping=1:fontsize=55:fontcolor=0xD4AF37:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.9:boxborderw=32:enable='$NOTIFY_AFTER'"
+            VF="$VF,drawtext=fontfile=$FONT:text='حان الآن وقت الصلاة في عمّان':expansion=none:text_shaping=1:fontsize=55:fontcolor=0xD4AF37:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.9:boxborderw=32:enable='$NOTIFY_AFTER'"
           fi
 
-          # 🎉 الجمعة
           if [ "$IS_FRIDAY" = "true" ]; then
-            VF="$VF,drawtext=fontfile=$FONT:text='🎉 جمعة مباركة • يوم سورة الكهف':expansion=none:text_shaping=1:fontsize=32:fontcolor=0xD4AF37:x=(w-tw)/2:y=530:box=1:boxcolor=black@0.85:boxborderw=20"
+            VF="$VF,drawtext=fontfile=$FONT:text='جمعة مباركة • يوم سورة الكهف':expansion=none:text_shaping=1:fontsize=32:fontcolor=0xD4AF37:x=(w-tw)/2:y=530:box=1:boxcolor=black@0.85:boxborderw=20"
           fi
 
-          # ═══ الأسفل ═══
-          # شعار القناة
           VF="$VF,drawtext=fontfile=$FONT:text='بث القرآن الكريم مباشر':expansion=none:text_shaping=1:fontsize=24:fontcolor=white:x=(w-tw)/2:y=h-55:box=1:boxcolor=black@0.8:boxborderw=14"
-          # مكة
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_makkah.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-115:box=1:boxcolor=black@0.8:boxborderw=16"
-          # عمّان
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_amman.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-175:box=1:boxcolor=black@0.8:boxborderw=16"
-          # CTA
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cta.txt:reload=1:expansion=none:text_shaping=1:fontsize=22:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-240:box=1:boxcolor=black@0.85:boxborderw=18"
 
           VF="$VF,format=yuv420p"
 
-          # ===== info_card overlay =====
           if [ "$HAS_INFO_CARD" = "yes" ]; then
             FULL_FILTER="[0:v]$VF[stream];[3:v]scale=500:500:force_original_aspect_ratio=decrease,pad=500:500:(ow-iw)/2:(oh-ih)/2:0x0A1929,format=yuv420p[info];[stream][info]overlay=x='if(gte(mod(floor(t/3600),2),1),30,W-w-30)':y='H-h-30':enable='lt(mod(t,3600),300)',format=yuv420p[vout]"
             FFMPEG_INPUTS="-stream_loop -1 -f concat -safe 0 -i images.txt -re -stream_loop -1 -i audio.mp3 -stream_loop -1 -i rain.mp3 -framerate 25 -loop 1 -i info_card.jpg"
@@ -480,7 +477,8 @@ jobs:
             FFMPEG_INPUTS="-stream_loop -1 -f concat -safe 0 -i images.txt -re -stream_loop -1 -i audio.mp3 -stream_loop -1 -i rain.mp3"
           fi
 
-          echo "Starting stream with all features..."
+          echo "Starting stream..."
+          echo "Info card: $HAS_INFO_CARD"
           echo "Filters: $(echo "$VF" | grep -o 'drawtext' | wc -l)"
 
           timeout 21300 ffmpeg \
