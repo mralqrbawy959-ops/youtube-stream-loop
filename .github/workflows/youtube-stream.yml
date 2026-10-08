@@ -55,7 +55,6 @@ jobs:
             echo "audio_url=$AUDIO_URL_BAQARAH" >> $GITHUB_OUTPUT
             echo "surah_ar=سورة البقرة" >> $GITHUB_OUTPUT
           fi
-          echo "Day: $DAY_NUM"
 
       - name: Fetch Prayer Times
         id: data
@@ -68,13 +67,10 @@ jobs:
             TEST=$(jq -r --arg d "$TODAY_DD" '.["Amman"]["'"$TODAY_DD"'"].fajr // empty' "$CACHE_FILE" 2>/dev/null || echo "")
             if [ -n "$TEST" ] && [ "$TEST" != "null" ]; then
               NEED_FETCH="no"
-              echo "Cache valid for $TODAY_DD"
             fi
           fi
           
           if [ "$NEED_FETCH" = "yes" ]; then
-            echo "Fetching 2 months of prayer times..."
-            
             MONTH=$(TZ='Asia/Amman' date '+%m')
             YEAR=$(TZ='Asia/Amman' date '+%Y')
             NEXT_MONTH_NUM=$((10#$MONTH + 1))
@@ -95,8 +91,6 @@ jobs:
               local COUNTRY="$3"
               local METHOD="$4"
               
-              echo "Fetching $KEY..."
-              
               local URL1="https://api.aladhan.com/v1/calendarByCity?city=$CITY&country=$COUNTRY&method=$METHOD&month=$MONTH&year=$YEAR"
               local URL2="https://api.aladhan.com/v1/calendarByCity?city=$CITY&country=$COUNTRY&method=$METHOD&month=$NEXT_MONTH&year=$NEXT_YEAR"
               
@@ -104,19 +98,17 @@ jobs:
               local R2=$(curl -s --max-time 30 -L "$URL2" 2>/dev/null || echo "")
               
               if echo "$R1" | grep -q '"Fajr"'; then
-                echo "Got data for $KEY"
                 echo ",\"$KEY\":{" >> "$FINAL_JSON"
-                
                 local FIRST="true"
                 for RES in "$R1" "$R2"; do
-                  echo "$RES" | jq -r '.data[] | "\(.date.gregorian.date)|\(.timings.Fajr)|\(.timings.Dhuhr)|\(.timings.Asr)|\(.timings.Maghrib)|\(.timings.Isha)|\(.date.hijri.day)|\(.date.hijri.month.ar)|\(.date.hijri.year)"' 2>/dev/null | while IFS='|' read -r DATE F D A M I HD HM HY; do
+                  echo "$RES" | jq -r '.data[] | "\(.date.gregorian.date)|\(.timings.Fajr)|\(.timings.Dhuhr)|\(.timings.Asr)|\(.timings.Maghrib)|\(.timings.Isha)"' 2>/dev/null | while IFS='|' read -r DATE F D A M I; do
                     if [ "$FIRST" = "true" ]; then
                       FIRST="false"
                     else
                       echo "," >> "$FINAL_JSON"
                     fi
-                    printf '"%s":{"gregorian_date":"%s","fajr":"%s","dhuhr":"%s","asr":"%s","maghrib":"%s","isha":"%s","hijri_day":"%s","hijri_month":"%s","hijri_year":"%s"}' \
-                      "$DATE" "$DATE" "${F:0:5}" "${D:0:5}" "${A:0:5}" "${M:0:5}" "${I:0:5}" "$HD" "$HM" "$HY" >> "$FINAL_JSON"
+                    printf '"%s":{"gregorian_date":"%s","fajr":"%s","dhuhr":"%s","asr":"%s","maghrib":"%s","isha":"%s"}' \
+                      "$DATE" "$DATE" "${F:0:5}" "${D:0:5}" "${A:0:5}" "${M:0:5}" "${I:0:5}" >> "$FINAL_JSON"
                   done
                 done
                 echo "}" >> "$FINAL_JSON"
@@ -135,7 +127,6 @@ jobs:
             
             if jq empty "$FINAL_JSON" 2>/dev/null; then
               mv "$FINAL_JSON" "$CACHE_FILE"
-              echo "Valid JSON created"
             fi
           fi
           
@@ -152,8 +143,6 @@ jobs:
               A_I=$(jq -r --arg d "$TODAY_DD" '.["Amman"]["'"$TODAY_DD"'"].isha' "$CACHE_FILE")
             fi
           fi
-          
-          echo "Amman: $A_F $A_D $A_A $A_M $A_I"
           
           echo "amman_fajr=$A_F" >> $GITHUB_OUTPUT
           echo "amman_dhuhr=$A_D" >> $GITHUB_OUTPUT
@@ -184,14 +173,10 @@ jobs:
         env:
           RAIN_URL: ${{ secrets.RAIN_SOUND_IN_THE_BACKGROUND }}
         run: |
-          echo "Downloading main audio..."
           wget -q --show-progress -O audio.mp3 "${{ steps.day.outputs.audio_url }}"
           ls -lh audio.mp3
-          
-          echo "Downloading rain..."
           wget -q --show-progress -O rain.mp3 "$RAIN_URL"
           ls -lh rain.mp3
-          
           [ -s "audio.mp3" ] || { echo "audio.mp3 empty"; exit 1; }
           [ -s "rain.mp3" ] || { echo "rain.mp3 empty"; exit 1; }
 
@@ -204,7 +189,6 @@ jobs:
               -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p" \
               -q:v 2 "normalized/$img"
           done
-          ls -lh normalized/
 
       - name: Create Image Playlist
         env:
@@ -224,7 +208,6 @@ jobs:
               echo "duration 60" >> images.txt
             done
           fi
-          cat images.txt
 
       - name: Prepare Content Pools
         env:
@@ -342,7 +325,6 @@ jobs:
           STREAM_EN=$(get_c "stream_enabled" "yes")
           
           if [ "$STREAM_EN" = "no" ]; then
-            echo "Stream disabled"
             exit 0
           fi
 
@@ -364,19 +346,20 @@ jobs:
 
           echo "التاريخ: $(TZ='Asia/Amman' date '+%Y.%m.%d')" > /tmp/date.txt
           echo "السورة: $SURAH_AR" > /tmp/surah_ar.txt
-          echo "عمّان: الفجر $A_F - الظهر $A_D - العصر $A_A - المغرب $A_M - العشاء $A_I" > /tmp/amman_line.txt
+          echo "عمّان: الفجر $A_F  الظهر $A_D  العصر $A_A  المغرب $A_M  العشاء $A_I" > /tmp/amman_line.txt
           echo "التاريخ الهجري: $H_DAY $H_MONTH $H_YEAR هـ" > /tmp/hijri.txt
-          CLEAN_W=$(echo "$WEATHER" | sed 's/°//g')
+          
+          CLEAN_W=$(echo "$WEATHER" | sed 's/°//g' | tr -d '°□' | head -c 10)
           echo "طقس عمّان: $CLEAN_W" > /tmp/weather.txt
           
           if [ "$IS_FRIDAY" = "true" ]; then
-            echo "القارئ: ياسر الزيلعي - سورة الكهف" > /tmp/reciter.txt
+            echo "القارئ: ياسر الزيلعي  سورة الكهف" > /tmp/reciter.txt
           else
-            echo "القارئ: ياسر الزيلعي - سورة البقرة" > /tmp/reciter.txt
+            echo "القارئ: ياسر الزيلعي  سورة البقرة" > /tmp/reciter.txt
           fi
           
           echo " " > /tmp/custom_msg.txt
-          echo "مدة البث: 00:00:00" > /tmp/duration.txt
+          echo "مدة البث: 00:00" > /tmp/duration.txt
 
           update_cd() {
             local TZ_NAME="$1" CITY="$2"
@@ -446,8 +429,8 @@ jobs:
             sleep 60
             NOW=$(date +%s)
             EL=$((NOW - STREAM_START))
-            HH=$((EL / 3600)); MM=$(((EL % 3600) / 60)); SS=$((EL % 60))
-            printf "مدة البث: %02d:%02d:%02d" $HH $MM $SS > /tmp/dur.tmp && mv /tmp/dur.tmp /tmp/duration.txt
+            HH=$((EL / 3600)); MM=$(((EL % 3600) / 60))
+            printf "مدة البث: %02d:%02d" $HH $MM > /tmp/dur.tmp && mv /tmp/dur.tmp /tmp/duration.txt
           done) & DUR_PID=$!
 
           (while true; do
@@ -522,7 +505,7 @@ jobs:
           VF="$VF,drawtext=fontfile=$FONT:text='حان الآن وقت الصلاة في عمّان':expansion=none:text_shaping=1:fontsize=52:fontcolor=0xD4AF37:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.9:boxborderw=32:enable='$NOTIFY_AFTER'"
 
           if [ "$IS_FRIDAY" = "true" ]; then
-            VF="$VF,drawtext=fontfile=$FONT:text='جمعة مباركة - يوم سورة الكهف':expansion=none:text_shaping=1:fontsize=30:fontcolor=0xD4AF37:x=(w-tw)/2:y=540:box=1:boxcolor=black@0.9:boxborderw=20"
+            VF="$VF,drawtext=fontfile=$FONT:text='جمعة مباركة  يوم سورة الكهف':expansion=none:text_shaping=1:fontsize=30:fontcolor=0xD4AF37:x=(w-tw)/2:y=540:box=1:boxcolor=black@0.9:boxborderw=20"
           fi
 
           [ "$(get_s 'cta_enabled' 'yes')" = "yes" ] && \
