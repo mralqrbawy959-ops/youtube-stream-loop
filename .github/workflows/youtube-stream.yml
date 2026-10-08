@@ -32,11 +32,8 @@ jobs:
         run: |
           echo "=== Files ==="
           ls -la
-          echo "=== Cover ==="
           [ -f "cover.jpg" ] && echo "OK cover.jpg" || echo "MISSING cover.jpg"
-          echo "=== Info Card ==="
           [ -f "info_card.jpg" ] && echo "OK info_card.jpg" || echo "MISSING info_card.jpg"
-          echo "=== Font ==="
           FONT="/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
           [ ! -f "$FONT" ] && FONT=$(find /usr/share/fonts -name "NotoNaskhArabic*.ttf" 2>/dev/null | head -1)
           [ -z "$FONT" ] && { echo "Arabic font missing"; exit 1; }
@@ -123,8 +120,6 @@ jobs:
                   done
                 done
                 echo "}" >> "$FINAL_JSON"
-              else
-                echo "Failed for $KEY"
               fi
             }
             
@@ -139,11 +134,8 @@ jobs:
             echo "}" >> "$FINAL_JSON"
             
             if jq empty "$FINAL_JSON" 2>/dev/null; then
-              SIZE=$(du -h "$FINAL_JSON" | cut -f1)
-              echo "Valid JSON created: $SIZE"
               mv "$FINAL_JSON" "$CACHE_FILE"
-            else
-              echo "Invalid JSON, keeping old cache"
+              echo "Valid JSON created"
             fi
           fi
           
@@ -162,7 +154,6 @@ jobs:
               H_DAY=$(jq -r --arg d "$TODAY_DD" '.["Amman"]["'"$TODAY_DD"'"].hijri_day // "1"' "$CACHE_FILE")
               H_MONTH=$(jq -r --arg d "$TODAY_DD" '.["Amman"]["'"$TODAY_DD"'"].hijri_month // "محرم"' "$CACHE_FILE")
               H_YEAR=$(jq -r --arg d "$TODAY_DD" '.["Amman"]["'"$TODAY_DD"'"].hijri_year // "1448"' "$CACHE_FILE")
-              echo "Read from cache"
             fi
           fi
           
@@ -211,7 +202,6 @@ jobs:
           
           [ -s "audio.mp3" ] || { echo "audio.mp3 empty"; exit 1; }
           [ -s "rain.mp3" ] || { echo "rain.mp3 empty"; exit 1; }
-          echo "Both files ready"
 
       - name: Normalize Images
         run: |
@@ -242,7 +232,6 @@ jobs:
               echo "duration 60" >> images.txt
             done
           fi
-          echo "=== Playlist ==="
           cat images.txt
 
       - name: Prepare Content Pools
@@ -254,11 +243,11 @@ jobs:
               "من قرأ سورة الكهف يوم الجمعة أضاء له من النور ما بين الجمعتين" \
               "من قرأ سورة الكهف في يوم الجمعة عصم من فتنة الدجال" \
               "الجمعة سيد الأيام وسورة الكهف تاجها" \
-              "أكثروا من الصلاة عليّ يوم الجمعة فإنها معروضة عليّ" \
+              "أكثروا من الصلاة علي يوم الجمعة فإنها معروضة علي" \
               > hadith_pool.txt
           else
             printf '%s\n' \
-              "لا تجعلوا بيوتكم مقابر، إن الشيطان ينفر من البيت الذي تُقرأ فيه سورة البقرة" \
+              "لا تجعلوا بيوتكم مقابر، إن الشيطان ينفر من البيت الذي تقرأ فيه سورة البقرة" \
               "اقرؤوا سورة البقرة، فإن أخذها بركة، وتركها حسرة" \
               "من قرأ الآيتين الأخيرتين من سورة البقرة في ليلة كفتاه" \
               "آية الكرسي أعظم آية في كتاب الله وهي في سورة البقرة" \
@@ -286,14 +275,14 @@ jobs:
             > cta_pool.txt
 
           printf '%s\n' \
-            "إِنَّ اللَّهَ مَعَ الصَّابِرِينَ" \
             "وَبَشِّرِ الصَّابِرِينَ" \
-            "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ" \
-            "وَسِعَ كُرْسِيُّهُ السَّمَاوَاتِ وَالْأَرْضَ" \
+            "إِنَّ اللَّهَ مَعَ الصَّابِرِينَ" \
+            "أَلَا بِذِكْرِ اللَّهِ تَطْمَئِنُّ الْقُلُوبُ" \
+            "وَذَكِّرْ فَإِنَّ الذِّكْرَى تَنفَعُ الْمُؤْمِنِينَ" \
             "رَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً" \
             "إِنَّا لِلَّهِ وَإِنَّا إِلَيْهِ رَاجِعُونَ" \
-            "وَذَكِّرْ فَإِنَّ الذِّكْرَىٰ تَنفَعُ الْمُؤْمِنِينَ" \
-            "أَلَا بِذِكْرِ اللَّهِ تَطْمَئِنُّ الْقُلُوبُ" \
+            "وَمَن يَتَّقِ اللَّهَ يَجْعَل لَّهُ مَخْرَجًا" \
+            "فَاذْكُرُونِي أَذْكُرْكُمْ" \
             > verses_pool.txt
 
       - name: Stream to YouTube
@@ -326,12 +315,11 @@ jobs:
           FONT="/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
           [ ! -f "$FONT" ] && FONT=$(find /usr/share/fonts -name "NotoNaskhArabic*.ttf" 2>/dev/null | head -1)
           [ -z "$FONT" ] && FONT="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-          echo "Font: $FONT"
           
           HAS_INFO_CARD="no"
           [ -f "info_card.jpg" ] && HAS_INFO_CARD="yes"
-          echo "Info card: $HAS_INFO_CARD"
 
+          # ===== الملفات الديناميكية =====
           TZ='Asia/Amman' date '+%H.%M' > /tmp/clock.txt
           shuf -n 1 hadith_pool.txt > /tmp/hadith.txt
           shuf -n 1 adhkar_pool.txt > /tmp/dhikr.txt
@@ -339,10 +327,10 @@ jobs:
           shuf -n 1 verses_pool.txt > /tmp/verse.txt
 
           echo "التاريخ: $(TZ='Asia/Amman' date '+%Y.%m.%d')" > /tmp/date.txt
-          echo "$SURAH_AR" > /tmp/surah_ar.txt
+          echo "السورة: $SURAH_AR" > /tmp/surah_ar.txt
           echo "عمّان: الفجر $A_F | الظهر $A_D | العصر $A_A | المغرب $A_M | العشاء $A_I" > /tmp/amman_line.txt
-          echo "$H_DAY $H_MONTH $H_YEAR هـ" > /tmp/hijri.txt
-          echo "عمّان $WEATHER" > /tmp/weather.txt
+          echo "التاريخ الهجري: $H_DAY $H_MONTH $H_YEAR هـ" > /tmp/hijri.txt
+          echo "طقس عمّان: $WEATHER" > /tmp/weather.txt
           
           if [ "$IS_FRIDAY" = "true" ]; then
             echo "القارئ: ياسر الزيلعي - سورة الكهف" > /tmp/reciter.txt
@@ -350,9 +338,10 @@ jobs:
             echo "القارئ: ياسر الزيلعي - سورة البقرة" > /tmp/reciter.txt
           fi
 
+          # ===== العد التنازلي =====
           update_countdown() {
-            local TZ_NAME="$1" CITY="$2" EMOJI="$3"
-            local F="$4" D="$5" A="$6" M="$7" I="$8"
+            local TZ_NAME="$1" CITY="$2"
+            local F="$3" D="$4" A="$5" M="$6" I="$7"
             local NOW=$(date +%s)
             local TODAY=$(TZ="$TZ_NAME" date '+%Y-%m-%d')
             local BA="" BO=999999
@@ -367,20 +356,45 @@ jobs:
             done
             local HH=$((BO / 3600)); local MM=$(((BO % 3600) / 60))
             if [ "$HH" -gt 0 ]; then
-              echo "$EMOJI $CITY: $BA بعد $HH س و $MM د"
+              echo "$CITY: $BA بعد $HH س و $MM د"
             else
-              echo "$EMOJI $CITY: $BA بعد $MM د"
+              echo "$CITY: $BA بعد $MM د"
             fi
           }
 
-          update_countdown "Asia/Amman" "عمّان" "🕌" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/cd_amman.txt
-          update_countdown "Asia/Riyadh" "مكة" "🕋" "$M_F" "$M_D" "$M_A" "$M_M" "$M_I" > /tmp/cd_makkah.txt
+          update_countdown "Asia/Amman" "عمّان" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/cd_amman.txt
+          update_countdown "Asia/Riyadh" "مكة" "$M_F" "$M_D" "$M_A" "$M_M" "$M_I" > /tmp/cd_makkah.txt
 
+          # ===== إشعارات الصلاة =====
+          STREAM_START=$(date +%s)
+          TODAY_AMMAN=$(TZ='Asia/Amman' date '+%Y-%m-%d')
+          NOTIFY_BEFORE=""
+          NOTIFY_AFTER=""
+
+          for p in "الفجر|$A_F" "الظهر|$A_D" "العصر|$A_A" "المغرب|$A_M" "العشاء|$A_I"; do
+            AR="${p%%|*}"; t="${p##*|}"
+            [ -z "$t" ] && continue
+            PE=$(TZ='Asia/Amman' date -d "$TODAY_AMMAN $t" +%s 2>/dev/null)
+            [ -z "$PE" ] && continue
+            [ "$PE" -lt "$STREAM_START" ] && PE=$((PE + 86400))
+            OFF=$((PE - STREAM_START))
+            if [ "$OFF" -ge 0 ] && [ "$OFF" -lt 21300 ]; then
+              BEFORE_START=$((OFF - 300))
+              [ "$BEFORE_START" -lt 0 ] && BEFORE_START=0
+              ADD="between(t,$BEFORE_START,$OFF)"
+              [ -z "$NOTIFY_BEFORE" ] && NOTIFY_BEFORE="$ADD" || NOTIFY_BEFORE="$NOTIFY_BEFORE+$ADD"
+              AFTER_END=$((OFF + 180))
+              ADD2="between(t,$OFF,$AFTER_END)"
+              [ -z "$NOTIFY_AFTER" ] && NOTIFY_AFTER="$ADD2" || NOTIFY_AFTER="$NOTIFY_AFTER+$ADD2"
+            fi
+          done
+
+          # ===== العمليات الخلفية =====
           (while true; do
             sleep 60
             TZ='Asia/Amman' date '+%H.%M' > /tmp/c.tmp && mv /tmp/c.tmp /tmp/clock.txt
-            update_countdown "Asia/Amman" "عمّان" "🕌" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/cda.tmp && mv /tmp/cda.tmp /tmp/cd_amman.txt
-            update_countdown "Asia/Riyadh" "مكة" "🕋" "$M_F" "$M_D" "$M_A" "$M_M" "$M_I" > /tmp/cdm.tmp && mv /tmp/cdm.tmp /tmp/cd_makkah.txt
+            update_countdown "Asia/Amman" "عمّان" "$A_F" "$A_D" "$A_A" "$A_M" "$A_I" > /tmp/cda.tmp && mv /tmp/cda.tmp /tmp/cd_amman.txt
+            update_countdown "Asia/Riyadh" "مكة" "$M_F" "$M_D" "$M_A" "$M_M" "$M_I" > /tmp/cdm.tmp && mv /tmp/cdm.tmp /tmp/cd_makkah.txt
           done) & C_PID=$!
 
           (while true; do sleep 300; shuf -n 1 hadith_pool.txt > /tmp/h.tmp && mv /tmp/h.tmp /tmp/hadith.txt; done) & H_PID=$!
@@ -390,28 +404,60 @@ jobs:
 
           trap "kill $C_PID $H_PID $D_PID $T_PID $V_PID 2>/dev/null || true" EXIT INT TERM
 
+          # ===== تصميم الفلاتر =====
           VF="fps=25,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/clock.txt:reload=1:expansion=none:fontsize=56:fontcolor=white:x=w-tw-40:y=35:box=1:boxcolor=black@0.8:boxborderw=18"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/surah_ar.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=0xD4AF37:x=w-tw-40:y=120:box=1:boxcolor=black@0.8:boxborderw=14"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/amman_line.txt:expansion=none:text_shaping=1:fontsize=20:fontcolor=0xD4AF37:x=40:y=40:box=1:boxcolor=black@0.8:boxborderw=14"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/date.txt:reload=1:expansion=none:text_shaping=1:fontsize=20:fontcolor=white:x=40:y=90:box=1:boxcolor=black@0.8:boxborderw=12"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/hijri.txt:reload=1:expansion=none:text_shaping=1:fontsize=20:fontcolor=0xD4AF37:x=40:y=135:box=1:boxcolor=black@0.8:boxborderw=12"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/weather.txt:reload=1:expansion=none:text_shaping=1:fontsize=20:fontcolor=white:x=40:y=180:box=1:boxcolor=black@0.8:boxborderw=12"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/reciter.txt:reload=1:expansion=none:text_shaping=1:fontsize=20:fontcolor=0xD4AF37:x=40:y=225:box=1:boxcolor=black@0.75:boxborderw=12"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/hadith.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=280:box=1:boxcolor=black@0.85:boxborderw=22"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/dhikr.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=white:x=(w-tw)/2:y=345:box=1:boxcolor=black@0.85:boxborderw=20"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/verse.txt:reload=1:expansion=none:text_shaping=1:fontsize=22:fontcolor=0xFFD700:x=(w-tw)/2:y=410:box=1:boxcolor=black@0.85:boxborderw=20"
 
-          if [ "$IS_FRIDAY" = "true" ]; then
-            VF="$VF,drawtext=fontfile=$FONT:text='جمعة مباركة - يوم سورة الكهف':expansion=none:text_shaping=1:fontsize=32:fontcolor=0xD4AF37:x=(w-tw)/2:y=475:box=1:boxcolor=black@0.85:boxborderw=20"
+          # ═══ يمين أعلى: الساعة ═══
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/clock.txt:reload=1:expansion=none:fontsize=58:fontcolor=white:x=w-tw-40:y=35:box=1:boxcolor=black@0.85:boxborderw=20"
+          # يمين أعلى: السورة
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/surah_ar.txt:reload=1:expansion=none:text_shaping=1:fontsize=26:fontcolor=0xD4AF37:x=w-tw-40:y=125:box=1:boxcolor=black@0.85:boxborderw=16"
+
+          # ═══ يسار أعلى: المجموعة الكاملة ═══
+          # المواقيت
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/amman_line.txt:expansion=none:text_shaping=1:fontsize=22:fontcolor=0xD4AF37:x=40:y=40:box=1:boxcolor=black@0.85:boxborderw=16"
+          # التاريخ الميلادي
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/date.txt:reload=1:expansion=none:text_shaping=1:fontsize=20:fontcolor=white:x=40:y=95:box=1:boxcolor=black@0.85:boxborderw=14"
+          # التاريخ الهجري
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/hijri.txt:reload=1:expansion=none:text_shaping=1:fontsize=20:fontcolor=0xD4AF37:x=40:y=140:box=1:boxcolor=black@0.85:boxborderw=14"
+          # الطقس
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/weather.txt:reload=1:expansion=none:text_shaping=1:fontsize=20:fontcolor=white:x=40:y=185:box=1:boxcolor=black@0.85:boxborderw=14"
+          # القارئ
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/reciter.txt:reload=1:expansion=none:text_shaping=1:fontsize=20:fontcolor=0xD4AF37:x=40:y=230:box=1:boxcolor=black@0.85:boxborderw=14"
+
+          # ═══ المنتصف - فوق سورة البقرة ═══
+          # الحديث (y=300)
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/hadith.txt:reload=1:expansion=none:text_shaping=1:fontsize=22:fontcolor=0xD4AF37:x=(w-tw)/2:y=290:box=1:boxcolor=black@0.9:boxborderw=22"
+          # الذكر (y=345)
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/dhikr.txt:reload=1:expansion=none:text_shaping=1:fontsize=22:fontcolor=white:x=(w-tw)/2:y=350:box=1:boxcolor=black@0.9:boxborderw=20"
+          # آية اليوم - مكان جديد (y=410) لا يتداخل
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/verse.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xFFD700:x=(w-tw)/2:y=410:box=1:boxcolor=black@0.9:boxborderw=22"
+
+          # ═══ إشعارات الصلاة ═══
+          if [ -n "$NOTIFY_BEFORE" ]; then
+            VF="$VF,drawtext=fontfile=$FONT:text='اقترب وقت الصلاة في عمّان':expansion=none:text_shaping=1:fontsize=48:fontcolor=0xD4AF37:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.9:boxborderw=30:enable='$NOTIFY_BEFORE'"
+          fi
+          if [ -n "$NOTIFY_AFTER" ]; then
+            VF="$VF,drawtext=fontfile=$FONT:text='حان الآن وقت الصلاة في عمّان':expansion=none:text_shaping=1:fontsize=52:fontcolor=0xD4AF37:x=(w-tw)/2:y=(h-th)/2:box=1:boxcolor=black@0.9:boxborderw=32:enable='$NOTIFY_AFTER'"
           fi
 
-          VF="$VF,drawtext=fontfile=$FONT:text='بث القرآن الكريم مباشر':expansion=none:text_shaping=1:fontsize=24:fontcolor=white:x=(w-tw)/2:y=h-55:box=1:boxcolor=black@0.8:boxborderw=14"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_makkah.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-115:box=1:boxcolor=black@0.8:boxborderw=16"
-          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_amman.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-175:box=1:boxcolor=black@0.8:boxborderw=16"
+          # ═══ تحية الجمعة ═══
+          if [ "$IS_FRIDAY" = "true" ]; then
+            VF="$VF,drawtext=fontfile=$FONT:text='جمعة مباركة - يوم سورة الكهف':expansion=none:text_shaping=1:fontsize=30:fontcolor=0xD4AF37:x=(w-tw)/2:y=470:box=1:boxcolor=black@0.9:boxborderw=20"
+          fi
+
+          # ═══ الأسفل - مرتب من الأعلى للأسفل ═══
+          # CTA
           VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cta.txt:reload=1:expansion=none:text_shaping=1:fontsize=22:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-240:box=1:boxcolor=black@0.85:boxborderw=18"
+          # عمّان
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_amman.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-175:box=1:boxcolor=black@0.85:boxborderw=16"
+          # مكة
+          VF="$VF,drawtext=fontfile=$FONT:textfile=/tmp/cd_makkah.txt:reload=1:expansion=none:text_shaping=1:fontsize=24:fontcolor=0xD4AF37:x=(w-tw)/2:y=h-115:box=1:boxcolor=black@0.85:boxborderw=16"
+          # شعار القناة
+          VF="$VF,drawtext=fontfile=$FONT:text='بث القرآن الكريم مباشر':expansion=none:text_shaping=1:fontsize=22:fontcolor=white:x=(w-tw)/2:y=h-55:box=1:boxcolor=black@0.85:boxborderw=14"
+
           VF="$VF,format=yuv420p"
 
+          # ═══ info_card overlay ═══
           if [ "$HAS_INFO_CARD" = "yes" ]; then
             FULL_FILTER="[0:v]$VF[stream];[3:v]scale=500:500:force_original_aspect_ratio=decrease,pad=500:500:(ow-iw)/2:(oh-ih)/2:0x0A1929,format=yuv420p[info];[stream][info]overlay=x='if(gte(mod(floor(t/3600),2),1),30,W-w-30)':y='H-h-30':enable='lt(mod(t,3600),300)',format=yuv420p[vout]"
             FFMPEG_INPUTS="-stream_loop -1 -f concat -safe 0 -i images.txt -re -stream_loop -1 -i audio.mp3 -stream_loop -1 -i rain.mp3 -framerate 25 -loop 1 -i info_card.jpg"
