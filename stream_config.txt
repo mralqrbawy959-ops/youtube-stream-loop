@@ -1,135 +1,124 @@
 # ===== stream_config.txt =====
-# عدّل القيم ثم احفظ (Commit) — التغييرات تُطبق خلال 30 ثانية
+# تحكم كامل بالنصوص + جدولة زمنية
 
-# ═══════════════════════════════════
-# 🔧 الميزات العامة
-# ═══════════════════════════════════
+# ═══ الصوت ═══
 rain_volume=0.45
 main_volume=1.0
-custom_message=
 
-# ═══════════════════════════════════
-# 📍 الساعة (أعلى يمين)
-# ═══════════════════════════════════
+# ═══ الساعة ═══
 clock_enabled=yes
 clock_x=w-tw-40
 clock_y=35
 clock_size=58
 clock_color=white
+clock_hours=00:00-23:59
 
-# ═══════════════════════════════════
-# 📖 السورة (تحت الساعة)
-# ═══════════════════════════════════
+# ═══ السورة ═══
 surah_enabled=yes
 surah_x=w-tw-40
 surah_y=125
 surah_size=26
 surah_color=0xD4AF37
+surah_hours=00:00-23:59
 
-# ═══════════════════════════════════
-# 🕌 مواقيت عمّان (أعلى يسار)
-# ═══════════════════════════════════
+# ═══ مواقيت عمّان ═══
 amman_times_enabled=yes
 amman_times_x=40
 amman_times_y=40
 amman_times_size=22
 amman_times_color=0xD4AF37
+amman_times_hours=00:00-23:59
 
-# ═══════════════════════════════════
-# 📅 التاريخ الميلادي
-# ═══════════════════════════════════
+# ═══ التاريخ الميلادي ═══
 date_enabled=yes
 date_x=40
 date_y=95
 date_size=20
 date_color=white
+date_hours=00:00-23:59
 
-# ═══════════════════════════════════
-# 🌙 التاريخ الهجري
-# ═══════════════════════════════════
+# ═══ الهجري ═══
 hijri_enabled=yes
 hijri_x=40
 hijri_y=140
 hijri_size=20
 hijri_color=0xD4AF37
+hijri_hours=00:00-23:59
 
-# ═══════════════════════════════════
-# 🌡️ الطقس
-# ═══════════════════════════════════
+# ═══ الطقس ═══
 weather_enabled=yes
 weather_x=40
 weather_y=185
 weather_size=20
 weather_color=white
+weather_hours=06:00-22:00
 
-# ═══════════════════════════════════
-# 🎙️ القارئ
-# ═══════════════════════════════════
+# ═══ القارئ ═══
 reciter_enabled=yes
 reciter_x=40
 reciter_y=230
 reciter_size=20
 reciter_color=0xD4AF37
+reciter_hours=00:00-23:59
 
-# ═══════════════════════════════════
-# 📜 الحديث (وسط)
-# ═══════════════════════════════════
+# ═══ الحديث ═══
 hadith_enabled=yes
 hadith_y=290
 hadith_size=22
 hadith_color=0xD4AF37
+hadith_hours=05:00-23:00
 
-# ═══════════════════════════════════
-# 📿 الذكر
-# ═══════════════════════════════════
+# ═══ الذكر ═══
 dhikr_enabled=yes
 dhikr_y=350
 dhikr_size=22
 dhikr_color=white
+dhikr_hours=00:00-23:59
 
-# ═══════════════════════════════════
-# 📖 آية اليوم
-# ═══════════════════════════════════
+# ═══ آية اليوم ═══
 verse_enabled=yes
 verse_y=410
 verse_size=24
 verse_color=0xFFD700
+verse_hours=00:00-23:59
 
-# ═══════════════════════════════════
-# 💬 CTA (أسفل)
-# ═══════════════════════════════════
+# ═══ CTA ═══
 cta_enabled=yes
 cta_y_offset=240
 cta_size=22
 cta_color=0xD4AF37
+cta_hours=00:00-23:59
 
-# ═══════════════════════════════════
-# 🕌 عدّاد عمّان
-# ═══════════════════════════════════
+# ═══ عدّاد عمّان ═══
 cd_amman_enabled=yes
 cd_amman_y_offset=175
 cd_amman_size=24
 cd_amman_color=0xD4AF37
+cd_amman_hours=00:00-23:59
 
-# ═══════════════════════════════════
-# 🕋 عدّاد مكة
-# ═══════════════════════════════════
+# ═══ عدّاد مكة ═══
 cd_makkah_enabled=yes
 cd_makkah_y_offset=115
 cd_makkah_size=24
 cd_makkah_color=0xD4AF37
+cd_makkah_hours=00:00-23:59
 
-# ═══════════════════════════════════
-# 📺 شعار القناة
-# ═══════════════════════════════════
+# ═══ شعار القناة ═══
 brand_enabled=yes
 brand_y_offset=55
 brand_size=22
 brand_color=white
+brand_hours=00:00-23:59
 
-# ═══════════════════════════════════
-# 🖼️ info_card (صورة المعلومات)
-# ═══════════════════════════════════
+# ═══ مدة البث ═══
+duration_enabled=yes
+duration_x=40
+duration_y=280
+duration_size=20
+duration_color=0x00FF00
+duration_hours=00:00-23:59
+
+# ═══ info_card ═══
 info_card_enabled=yes
 info_card_size=500
 info_card_duration=300
