@@ -1,1 +1,2 @@
 # name|x|y|size|color|text_file|hours
+welcome|(w-tw)/2|550|26|0xFFD700|custom_texts/welcome.txt|00:00-23:59
