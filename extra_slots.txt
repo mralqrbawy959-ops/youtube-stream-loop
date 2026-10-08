@@ -1,0 +1,1 @@
+# name|x|y|size|color|text_file|hours
