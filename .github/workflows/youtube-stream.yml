@@ -2,10 +2,6 @@ name: YouTube Live Stream (Ultimate Arabic Edition)
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 2 * * 5'
-    - cron: '0 8 * * *'
-    - cron: '5 14 * * *'
 
 concurrency:
   group: youtube-live
